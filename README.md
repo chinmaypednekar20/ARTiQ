@@ -161,21 +161,6 @@ npm start
 ```
 *Access:* **http://localhost:3001**
 
-> **Windows PowerShell Tip:** Always prefix with `node` or `npm` (`npm start` or `node server.js`). Invoking `server.js` directly is not recognized by PowerShell.
-
----
-
-## Test Accounts
-
-If you imported `artiqpc.sql`, use these test credentials to explore immediately:
-
-| Role | Portal URL | Email | Password |
-|---|---|---|---|
-| **Artist** | `http://localhost:3000` | `ginger@gmail.com` | `ginger123` |
-| **Client** | `http://localhost:3001` | `neha@gmail.com` | *(login via register or demo client)* |
-
-You can also create new accounts via the registration forms on either portal.
-
 ---
 
 ## Project Structure
@@ -213,41 +198,3 @@ ARTiQ/
 ```
 
 ---
-
-## Production Deployment Guide
-
-Both services are ready for containerized or PaaS cloud deployment (e.g. Railway, Render, Fly.io, Heroku, or VPS with Nginx).
-
-### Deploying on Railway / Render:
-
-1. **Database**: Spin up a managed MySQL instance and copy the `DATABASE_URL`.
-2. **Client Service**:
-   - Root directory: `client-dashboard`
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-   - Set Environment Variables:
-     - `NODE_ENV=production`
-     - `DATABASE_URL=mysql://...`
-     - `JWT_SECRET=<64-char-random-string>`
-3. **Artist Service**:
-   - Root directory: `artist-dashboard`
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-   - Set Environment Variables:
-     - `NODE_ENV=production`
-     - `DATABASE_URL=mysql://...`
-     - `SESSION_SECRET=<64-char-random-string>`
-     - `CORS_ORIGIN=https://<your-client-domain>`
-
-### Health Monitoring
-Both services expose health endpoints for container probes and uptime monitors:
-- `GET /api/health` — returns JSON status, uptime, and database ping response.
-
----
-
-## Security & Reliability Standards
-
-- **SQL Injection Prevention**: Parameterized queries across all database drivers.
-- **Sensitive Data Isolation**: `.env` and environment credentials are excluded from Git tracking via root `.gitignore`.
-- **Credential Protection**: Passwords salted and hashed with Bcrypt (12 rounds); JWTs stored in `httpOnly` secure cookies.
-- **Connection Resilience**: Connection pools automatically recover from idle socket drops and transient database latency.
