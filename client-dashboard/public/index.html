@@ -30,6 +30,50 @@
             </div>
             <nav>
                 <ul>
+                    <li class="theme-menu">
+                        <a href="#" id="theme-toggle-btn" aria-label="Palette Themes" title="Switch Theme">
+                            <i class="fas fa-palette"></i>
+                        </a>
+                        <div class="theme-dropdown" id="theme-dropdown">
+                            <div class="theme-dropdown-header">Gallery Themes</div>
+                            <div class="theme-options">
+                                <button type="button" class="theme-opt active" data-theme="dark">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #0e111d, #f59e0b);"></span>
+                                    <span class="theme-name">Atelier Noir (Dark)</span>
+                                </button>
+                                <button type="button" class="theme-opt" data-theme="light">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #f8fafc, #b45309);"></span>
+                                    <span class="theme-name">Museum Alabaster (Light)</span>
+                                </button>
+                                <button type="button" class="theme-opt" data-theme="emerald">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #081C15, #038666, #FBB02D);"></span>
+                                    <span class="theme-name">Emerald Atelier (7.1)</span>
+                                </button>
+                                <button type="button" class="theme-opt" data-theme="crimson">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #54000D, #9E2A2B, #E09F3E);"></span>
+                                    <span class="theme-name">Crimson Gallery (7.2)</span>
+                                </button>
+                                <button type="button" class="theme-opt" data-theme="amethyst">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #240046, #E0AAFF, #FBB02D);"></span>
+                                    <span class="theme-name">Royal Amethyst (7.3)</span>
+                                </button>
+                                <button type="button" class="theme-opt" data-theme="azure">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #03045E, #00B4D8, #CAF0F8);"></span>
+                                    <span class="theme-name">Midnight Azure (7.4)</span>
+                                </button>
+                                <button type="button" class="theme-opt" data-theme="rose">
+                                    <span class="theme-swatch" style="background: linear-gradient(135deg, #602437, #B9375E, #FFCAD4);"></span>
+                                    <span class="theme-name">Velvet Rose (7.5)</span>
+                                </button>
+                            </div>
+                        </div>
+                    </li>
+                    <li>
+                        <a href="#" id="nav-messages-btn" aria-label="Messages" title="Artist Conversations">
+                            <i class="fas fa-comment-dots"></i>
+                            <span class="nav-badge" id="client-msg-badge" style="display:none;background:#f59e0b;color:#000;font-size:0.65rem;padding:1px 5px;border-radius:10px;font-weight:700;">1</span>
+                        </a>
+                    </li>
                     <li>
                         <a href="#" data-link="cart" id="cart-nav-link" aria-label="Cart">
                             <i class="fas fa-shopping-bag"></i>
@@ -245,12 +289,19 @@
                             <h3>About this piece</h3>
                             <p id="detail-description"></p>
                         </div>
+                        <div id="detail-sold-banner" class="sold-banner" style="display:none;">
+                            <i class="fas fa-certificate" style="font-size:1.1rem;color:#f87171;"></i>
+                            <span>This original piece has been <strong>sold to a private collector</strong>. You can still message the artist below to request or commission a bespoke custom work.</span>
+                        </div>
                         <div class="detail-actions">
                             <button class="btn primary-btn" id="add-to-cart">
                                 <i class="fas fa-shopping-bag"></i> Add to Cart
                             </button>
                             <button class="btn secondary-btn" id="add-to-favorites">
                                 <i class="far fa-heart"></i> Save
+                            </button>
+                            <button class="btn ghost-btn" id="inquire-artist-btn">
+                                <i class="fas fa-comment-dots"></i> Inquire / Commission
                             </button>
                         </div>
                     </div>
@@ -328,24 +379,69 @@
                                     <input type="text" id="country" value="India">
                                 </div>
                             </div>
-                            <h3>Payment Information</h3>
-                            <div class="form-group">
-                                <label for="card-number">Card Number</label>
-                                <input type="text" id="card-number" placeholder="1234 5678 9012 3456" maxlength="19" required>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="expiry">Expiry Date</label>
-                                    <input type="text" id="expiry" placeholder="MM/YY" maxlength="5" required>
+                            <!-- Feature 6: Stripe Test Mode Payment Gateway -->
+                            <div class="payment-gateway-section" style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                                    <h3 style="margin:0;"><i class="fas fa-shield-alt" style="color:var(--gold);margin-right:8px;"></i>Payment Method</h3>
+                                    <span style="font-size:0.75rem;padding:4px 10px;border-radius:var(--radius-xl);background:rgba(16,185,129,0.15);color:#34d399;font-weight:600;border:1px solid rgba(16,185,129,0.3)">
+                                        <i class="fas fa-lock"></i> 256-Bit SSL
+                                    </span>
                                 </div>
-                                <div class="form-group">
-                                    <label for="cvv">CVV</label>
-                                    <input type="text" id="cvv" placeholder="•••" maxlength="4" required>
+                                
+                                <div class="payment-method-selector" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+                                    <label class="pay-method-card active" style="padding:14px;border:1.5px solid var(--gold);background:var(--dark-3);border-radius:var(--radius-md);cursor:pointer;display:flex;align-items:center;gap:10px;">
+                                        <input type="radio" name="pay-method" value="card" checked style="accent-color:var(--gold)">
+                                        <div>
+                                            <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary)">Credit / Debit Card</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted)">Stripe Secure Gateway</div>
+                                        </div>
+                                    </label>
+                                    <label class="pay-method-card" style="padding:14px;border:1px solid var(--border);background:var(--dark-2);border-radius:var(--radius-md);cursor:pointer;display:flex;align-items:center;gap:10px;">
+                                        <input type="radio" name="pay-method" value="upi" style="accent-color:var(--gold)">
+                                        <div>
+                                            <div style="font-size:0.85rem;font-weight:600;color:var(--text-primary)">UPI / NetBanking</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted)">Instant Virtual Checkout</div>
+                                        </div>
+                                    </label>
                                 </div>
+
+                                <div id="card-fields-container">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                        <label for="card-number" style="font-size:0.85rem;">Card Details</label>
+                                        <button type="button" id="autofill-test-card" style="font-size:0.72rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:var(--gold-light);padding:2px 8px;border-radius:4px;cursor:pointer;">
+                                            <i class="fas fa-magic"></i> Autofill Stripe Test Card
+                                        </button>
+                                    </div>
+                                    <div class="form-group" style="position:relative;">
+                                        <input type="text" id="card-number" placeholder="4242 4242 4242 4242" maxlength="19" required>
+                                        <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:1.2rem;">
+                                            <i class="fab fa-cc-visa" style="color:#60a5fa;margin-right:4px;"></i>
+                                            <i class="fab fa-cc-mastercard" style="color:#f87171"></i>
+                                        </span>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="expiry">Expiry Date</label>
+                                            <input type="text" id="expiry" placeholder="12/28" maxlength="5" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="cvv">CVV</label>
+                                            <input type="text" id="cvv" placeholder="123" maxlength="4" required>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="upi-fields-container" style="display:none;margin-bottom:16px;">
+                                    <div class="form-group">
+                                        <label for="upi-id">Virtual Payment Address (VPA / UPI ID)</label>
+                                        <input type="text" id="upi-id" placeholder="username@upi">
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn primary-btn" id="place-order-submit-btn" style="width:100%;margin-top:10px;">
+                                    <i class="fas fa-lock"></i> Authorize & Complete Payment
+                                </button>
                             </div>
-                            <button type="submit" class="btn primary-btn">
-                                <i class="fas fa-check-circle"></i> Place Order
-                            </button>
                         </form>
                     </div>
                     <div class="order-summary">
@@ -468,12 +564,22 @@
                             <li><a href="#" data-tab="orders"><i class="fas fa-box"></i> My Orders</a></li>
                             <li><a href="#" data-tab="favorites"><i class="fas fa-heart"></i> Favorites</a></li>
                             <li><a href="#" data-tab="auctions"><i class="fas fa-gavel"></i> Auction Activity</a></li>
+                            <li><a href="#" data-tab="messages"><i class="fas fa-comment-dots"></i> Artist Inquiries</a></li>
                         </ul>
                     </div>
                     <div class="dashboard-main">
                         <div class="dashboard-tab" id="profile-tab">
-                            <h3>My Profile</h3>
-                            <form id="profile-form" style="max-width:500px">
+                            <h3>My Collector Profile</h3>
+                            <form id="profile-form" style="max-width:540px">
+                                <div class="profile-avatar-row">
+                                    <div class="profile-avatar-display" id="client-avatar-preview">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div style="flex:1;">
+                                        <label for="profile-pic-url" style="font-size:0.85rem;color:var(--text-muted);display:block;margin-bottom:6px;">Profile Avatar URL</label>
+                                        <input type="url" id="profile-pic-url" placeholder="https://example.com/photo.jpg" style="width:100%;padding:10px 14px;background:var(--dark-3);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);font-size:0.88rem;">
+                                    </div>
+                                </div>
                                 <div class="form-group">
                                     <label for="profile-name">Full Name</label>
                                     <input type="text" id="profile-name" required>
@@ -500,8 +606,12 @@
                                         </select>
                                     </div>
                                 </div>
-                                <button type="submit" class="btn primary-btn">
-                                    <i class="fas fa-save"></i> Update Profile
+                                <div class="form-group">
+                                    <label for="profile-bio">Collector Statement / Art Preferences</label>
+                                    <textarea id="profile-bio" rows="3" placeholder="Tell artists about the art styles, mediums, and palettes you collect..." style="width:100%;padding:10px 14px;background:var(--dark-3);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);font-size:0.88rem;"></textarea>
+                                </div>
+                                <button type="submit" class="btn primary-btn" style="margin-top:10px;">
+                                    <i class="fas fa-save"></i> Save Profile Settings
                                 </button>
                             </form>
                         </div>
@@ -516,6 +626,10 @@
                         <div class="dashboard-tab" id="auctions-tab" style="display:none">
                             <h3>My Auction Activity</h3>
                             <div class="auctions-list"></div>
+                        </div>
+                        <div class="dashboard-tab" id="messages-tab" style="display:none">
+                            <h3><i class="fas fa-comments" style="color:var(--gold);margin-right:10px;"></i>Inquiries & Commission Conversations</h3>
+                            <div class="client-messages-list" style="margin-top:20px;"></div>
                         </div>
                     </div>
                 </div>
@@ -552,6 +666,46 @@
         </section>
     </template>
 
+    <!-- Feature 1 & 7: Interactive Live Chatbox Modal -->
+    <div id="chatModal" class="chatbox-modal" style="display:none">
+        <div class="chatbox-window">
+            <div class="chatbox-header">
+                <div class="chatbox-artist-info">
+                    <div class="chatbox-avatar" id="chat-artist-avatar">
+                        <i class="fas fa-palette"></i>
+                    </div>
+                    <div>
+                        <div class="chatbox-artist-name" id="chat-artist-name">Artist Name</div>
+                        <div class="chatbox-status">Studio Artist · Active</div>
+                    </div>
+                </div>
+                <button type="button" class="chatbox-close" id="close-chat-modal">&times;</button>
+            </div>
+            
+            <div class="chatbox-topic-bar">
+                <span>Quick Topics:</span>
+                <span class="topic-chip" data-topic="Custom Commission">🎨 Custom Commission</span>
+                <span class="topic-chip" data-topic="Framing & Sizing">🖼️ Framing & Size</span>
+                <span class="topic-chip" data-topic="Shipping Rates">📦 Shipping Rates</span>
+                <span class="topic-chip" data-topic="General Inquiry">💬 General Inquiry</span>
+            </div>
+
+            <div class="chatbox-stream" id="chatbox-stream">
+                <!-- Live chat messages loaded here -->
+            </div>
+
+            <form class="chatbox-composer" id="chatbox-composer-form">
+                <input type="hidden" id="chat-target-artist-id">
+                <input type="text" id="chat-input-text" placeholder="Type your message or commission inquiry..." required autocomplete="off">
+                <button type="submit" class="btn primary-btn" id="chat-send-btn" style="padding:12px 20px;border-radius:var(--radius-xl);">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Socket.io Client for Real-Time Live Bidding Broadcasts -->
+    <script src="/socket.io/socket.io.js"></script>
     <script src="js/app.js" defer></script>
 </body>
 </html>

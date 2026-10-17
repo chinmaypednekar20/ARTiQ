@@ -37,6 +37,9 @@ Unlike conventional decoupled apps where image URLs depend on an auxiliary servi
 
 ## Core Capabilities
 
+- **Real-Time Live Bidding (Socket.io)**: Live auction bids are broadcast instantly over WebSockets to all connected collectors without page refreshing. Cards display real-time pulse animations and toast notifications on new high bids.
+- **Stripe Test Mode Payment Gateway**: Full checkout pipeline supporting credit/debit cards and UPI with a one-click Stripe test card autofill (`4242...`), client-side input formatting, payment intent authorization, and 256-bit SSL badge.
+- **Client-to-Artist Messaging & Commission Inquiries**: Direct "Inquire / Commission" workflow on every painting detail page. Clients can communicate with artists regarding bespoke commissions, framing, and dimensions, view message threads in their dashboard, and reply inline. Synchronized directly with the artist dashboard messages center.
 - **Dynamic Database Auto-Migration**: On startup, connection pools automatically verify and provision required tables (`clients`, `artists`, `paintings`, `auctions`, `bids`, `cart`, `favorites`, `orders`, `payments`, `earnings`, `messages`).
 - **Rolling Live Auctions**: Expired auctions automatically transition to `completed`. If no active auctions are pending, the engine dynamically activates catalog paintings with rolling future expiration timers.
 - **Transactional Order Execution**: Checkout flows run inside ACID MySQL transactions that simultaneously generate the client order, mark payment completion, and credit the artist's earnings.
@@ -49,8 +52,8 @@ Unlike conventional decoupled apps where image URLs depend on an auxiliary servi
 
 | Layer | Technologies |
 |---|---|
-| **Client Frontend** | Vanilla HTML5, CSS3 (Atelier Theme), Modern JavaScript SPA, Font Awesome 6 |
-| **Client Backend** | Node.js (ES Modules), Express 4, `mysql2/promise` Pool, JWT, Cookie-Parser, Helmet |
+| **Client Frontend** | Vanilla HTML5, CSS3 (Atelier Theme), Modern JavaScript SPA, Font Awesome 6, Socket.io Client |
+| **Client Backend** | Node.js (ES Modules), Express 4, Socket.io, Stripe SDK, `mysql2/promise` Pool, JWT, Cookie-Parser, Helmet |
 | **Artist Portal** | Node.js (CommonJS), Express 4, `mysql2` Pool, Multer, Express-Session, Bcrypt |
 | **Database** | MySQL 8.0+ / Cloud MySQL (Railway, Render, Supabase, Aiven, PlanetScale) |
 

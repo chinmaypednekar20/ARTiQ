@@ -230,11 +230,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         paintings.forEach(painting => {
                             const imageUrl = painting.image_url || '/placeholder.svg?height=200&width=300';
                             const formattedPrice = parseFloat(painting.price).toFixed(2);
-                            console.log(imageUrl);
+                            const isSoldBadge = painting.is_sold == 1 
+                                ? `<span style="position:absolute;top:12px;right:12px;background:rgba(239,68,68,0.92);color:#ffffff;padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:700;letter-spacing:1px;box-shadow:0 4px 12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.2);"><i class="fas fa-check-circle"></i> SOLD</span>` 
+                                : '';
+                            
                             paintingsGrid.innerHTML += `
                                 <div class="painting-card" data-id="${painting.painting_id}">
-                                    <div class="painting-image">
-                                        
+                                    <div class="painting-image" style="position:relative;">
+                                        ${isSoldBadge}
                                         <img src="${imageUrl}" alt="${painting.title}">
                                     </div>
                                     <div class="painting-details">

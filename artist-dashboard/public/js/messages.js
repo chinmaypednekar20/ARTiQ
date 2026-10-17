@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
     
-    // Function to load chat messages for a specific client
+    // Function to load chat messages for a specific client (chronological top-to-bottom)
     function loadChatMessages(clientId, clientMessages) {
         const client = clientMessages.find(c => c.client_id == clientId);
         const chatMessages = document.getElementById('chatMessages');
@@ -170,23 +170,49 @@ document.addEventListener('DOMContentLoaded', function() {
             if (client.messages.length === 0) {
                 chatMessages.innerHTML = `
                     <div class="empty-state">
-                        <p>No messages yet</p>
+                        <p>No messages yet with this collector</p>
                     </div>
                 `;
             } else {
-                client.messages.forEach(message => {
-                    const date = new Date(message.sent_at).toLocaleString();
+                // Sort chronologically: oldest at top, newest at bottom
+                const sortedMessages = [...client.messages].sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
+                
+                sortedMessages.forEach(message => {
+                    const date = new Date(message.sent_at).toLocaleString('en-IN', {
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                    });
+                    
+                    // Distinguish artist sent messages from client received inquiries
+                    const isArtist = message.sender_type === 'artist' || 
+                                     message.message.startsWith('[Artist]') || 
+                                     message.message.startsWith('[Reply]');
+                    const msgClass = isArtist ? 'sent' : 'received';
+                    
+                    // Clean tag for display if present
+                    let displayMsg = message.message;
+                    let tagBadge = '';
+                    const tagMatch = message.message.match(/^\[(.*?)\]\s*(.*)/s);
+                    if (tagMatch) {
+                        tagBadge = `<span style="display:inline-block;font-size:0.7rem;padding:2px 8px;border-radius:12px;background:rgba(245,158,11,0.2);color:#fbbf24;margin-bottom:6px;font-weight:600;"><i class="fas fa-tag"></i> ${tagMatch[1]}</span><br>`;
+                        displayMsg = tagMatch[2];
+                    }
                     
                     chatMessages.innerHTML += `
-                        <div class="message sent">
-                            <div class="message-content">${message.message}</div>
+                        <div class="message ${msgClass}">
+                            <div class="message-content">
+                                ${tagBadge}
+                                ${displayMsg}
+                            </div>
                             <div class="message-time">${date}</div>
                         </div>
                     `;
                 });
                 
-                // Scroll to bottom
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                // Scroll down to latest message at the bottom
+                setTimeout(() => {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }, 50);
             }
         }
     }

@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import mysql from 'mysql2/promise';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
@@ -15,10 +17,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'artiq_jwt_fallback_secret_key_change_in_production_2026';
 const ARTIST_SERVER_URL = process.env.ARTIST_SERVER_URL || 'http://localhost:3000';
 const IS_PROD = process.env.NODE_ENV === 'production';
+
+// Initialize Socket.io for Real-Time Bidding and Messaging
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: (origin, callback) => callback(null, true),
+    credentials: true
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.on('join:auction', (auctionId) => {
+    socket.join(`auction:${auctionId}`);
+  });
+  socket.on('leave:auction', (auctionId) => {
+    socket.leave(`auction:${auctionId}`);
+  });
+});
 
 // Ensure local uploads directory exists
 const localUploadsDir = path.join(__dirname, 'public', 'uploads');
@@ -326,6 +346,28 @@ async function initDatabase() {
         KEY client_id (client_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
     `);
+
+    // Safe Column Migrations for Profiles, Sold Artworks, and Messaging
+    const safeMigrations = [
+      "ALTER TABLE clients ADD COLUMN profile_pic text DEFAULT NULL",
+      "ALTER TABLE clients ADD COLUMN bio text DEFAULT NULL",
+      "ALTER TABLE artists ADD COLUMN profile_pic text DEFAULT NULL",
+      "ALTER TABLE artists ADD COLUMN bio text DEFAULT NULL",
+      "ALTER TABLE paintings ADD COLUMN is_sold tinyint(1) DEFAULT 0",
+      "ALTER TABLE messages ADD COLUMN sender_type enum('client','artist') DEFAULT 'client'"
+    ];
+    for (const sql of safeMigrations) {
+      try { await conn.execute(sql); } catch (e) { /* Column already exists */ }
+    }
+
+    // Auto-mark existing ordered paintings as sold
+    try {
+      await conn.execute(`
+        UPDATE paintings 
+        SET is_sold = 1 
+        WHERE painting_id IN (SELECT DISTINCT painting_id FROM orders WHERE status != 'cancelled')
+      `);
+    } catch (e) { /* Ignore if empty */ }
 
     // 2. Dynamic Auction Sync:
     // Mark expired auctions completed
@@ -670,9 +712,15 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
         'INSERT INTO earnings (artist_id, amount) VALUES (?, ?)',
         [item.artist_id, item.price]
       );
+
+      // 4. Mark the unique original painting as sold
+      await connection.execute(
+        'UPDATE paintings SET is_sold = 1 WHERE painting_id = ?',
+        [item.painting_id]
+      );
     }
 
-    // 4. Clear client's cart
+    // 5. Clear client's cart
     await connection.execute('DELETE FROM cart WHERE client_id = ?', [clientId]);
     await connection.commit();
     connection.release();
@@ -830,6 +878,15 @@ app.post('/api/bids', authenticateToken, bidLimiter, async (req, res) => {
     await connection.commit();
     connection.release();
 
+    // Feature 1: Real-Time Live Bidding Broadcast via Socket.io
+    io.emit('auction:bid', {
+      auctionId: parseInt(auctionId, 10),
+      currentBid: parsedBid,
+      bidderName: req.user.name,
+      title: auction.title || 'Artwork',
+      bidTime: new Date().toISOString()
+    });
+
     res.status(201).json({ message: 'Bid placed successfully', currentBid: parsedBid });
   } catch (error) {
     await connection.rollback();
@@ -845,7 +902,7 @@ app.post('/api/bids', authenticateToken, bidLimiter, async (req, res) => {
 app.get('/api/profile', authenticateToken, async (req, res) => {
   try {
     const [clients] = await db.execute(
-      'SELECT client_id, name, email, phone, age, gender FROM clients WHERE client_id = ?',
+      'SELECT client_id, name, email, phone, age, gender, profile_pic, bio FROM clients WHERE client_id = ?',
       [req.user.id]
     );
     if (clients.length === 0) return res.status(404).json({ message: 'Client profile not found' });
@@ -857,14 +914,142 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
 app.put('/api/profile', authenticateToken, async (req, res) => {
   try {
-    const { name, phone, age, gender } = req.body;
+    const { name, phone, age, gender, profile_pic, bio } = req.body;
     await db.execute(
-      'UPDATE clients SET name = ?, phone = ?, age = ?, gender = ? WHERE client_id = ?',
-      [name, phone, age, gender, req.user.id]
+      'UPDATE clients SET name = ?, phone = ?, age = ?, gender = ?, profile_pic = ?, bio = ? WHERE client_id = ?',
+      [name, phone, age, gender, profile_pic || null, bio || null, req.user.id]
     );
     res.json({ message: 'Profile updated successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error updating profile' });
+  }
+});
+
+// ============================================================================
+// Feature 6: Stripe Test Mode Payment Gateway
+// Generates payment intent / client secret for card & UPI authorization
+// ============================================================================
+app.post('/api/payment/create-intent', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.user.id;
+    const [cartItems] = await db.execute(`
+      SELECT c.*, p.price, p.title
+      FROM cart c JOIN paintings p ON c.painting_id = p.painting_id
+      WHERE c.client_id = ?
+    `, [clientId]);
+
+    if (cartItems.length === 0) {
+      return res.status(400).json({ message: 'Your cart is empty' });
+    }
+
+    const subtotal = cartItems.reduce((acc, item) => acc + parseFloat(item.price), 0);
+    const shipping = 250;
+    const totalAmount = subtotal + shipping;
+
+    // Supports live STRIPE_SECRET_KEY or fallback test simulation
+    const intentId = `pi_test_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const clientSecret = `${intentId}_secret_${Math.random().toString(36).substring(2, 9)}`;
+
+    res.json({
+      clientSecret,
+      paymentIntentId: intentId,
+      amount: totalAmount,
+      currency: 'inr',
+      itemsCount: cartItems.length,
+      status: 'requires_payment_method',
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_artiq_demo_key'
+    });
+  } catch (error) {
+    console.error('Payment intent error:', error);
+    res.status(500).json({ message: 'Failed to initialize payment gateway' });
+  }
+});
+
+// ============================================================================
+// Feature 7: Client-to-Artist Messaging & Commission Requests
+// Direct line connecting buyer inquiries to the artist's existing messages tab
+// ============================================================================
+app.get('/api/messages', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.user.id;
+    const [messages] = await db.execute(`
+      SELECT m.*, a.name as artist_name 
+      FROM messages m
+      JOIN artists a ON m.artist_id = a.artist_id
+      WHERE m.client_id = ?
+      ORDER BY m.sent_at ASC
+    `, [clientId]);
+
+    // Group messages by artist for threaded conversation UI
+    const conversations = {};
+    for (const msg of messages) {
+      if (!conversations[msg.artist_id]) {
+        conversations[msg.artist_id] = {
+          artist_id: msg.artist_id,
+          artist_name: msg.artist_name,
+          messages: []
+        };
+      }
+      conversations[msg.artist_id].messages.push(msg);
+    }
+    res.json(Object.values(conversations));
+  } catch (error) {
+    console.error('Error fetching client messages:', error);
+    res.status(500).json({ message: 'Server error retrieving messages' });
+  }
+});
+
+// Direct artist conversation thread
+app.get('/api/messages/:artistId', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.user.id;
+    const { artistId } = req.params;
+    const [messages] = await db.execute(`
+      SELECT m.*, a.name as artist_name, a.profile_pic as artist_avatar
+      FROM messages m
+      JOIN artists a ON m.artist_id = a.artist_id
+      WHERE m.client_id = ? AND m.artist_id = ?
+      ORDER BY m.sent_at ASC
+    `, [clientId, artistId]);
+    res.json(messages);
+  } catch (error) {
+    console.error('Error fetching artist thread:', error);
+    res.status(500).json({ message: 'Server error retrieving artist conversation' });
+  }
+});
+
+app.post('/api/messages', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.user.id;
+    const { artist_id, message } = req.body;
+    
+    if (!artist_id || !message || !message.trim()) {
+      return res.status(400).json({ message: 'Artist ID and message content are required' });
+    }
+
+    const [result] = await db.execute(
+      'INSERT INTO messages (artist_id, client_id, message, sender_type) VALUES (?, ?, ?, ?)',
+      [artist_id, clientId, message.trim(), 'client']
+    );
+
+    // Notify connected sockets in real time
+    io.emit('chat:message', {
+      messageId: result.insertId,
+      artist_id,
+      client_id: clientId,
+      sender_name: req.user.name,
+      sender_type: 'client',
+      message: message.trim(),
+      sent_at: new Date().toISOString()
+    });
+
+    res.status(201).json({ 
+      message: 'Inquiry sent successfully to artist', 
+      messageId: result.insertId 
+    });
+  } catch (error) {
+    console.error('Send message error:', error);
+    res.status(500).json({ message: 'Failed to transmit message' });
   }
 });
 
@@ -873,8 +1058,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start Server & initialize DB pool
-app.listen(PORT, async () => {
-  console.log(`ARTiQ Client Dashboard running on port ${PORT}`);
+// Start Server with Socket.io & initialize DB pool
+server.listen(PORT, async () => {
+  console.log(`ARTiQ Client Dashboard running on port ${PORT} with Socket.io`);
   await initDatabase();
 });

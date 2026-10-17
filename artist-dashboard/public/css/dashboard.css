@@ -180,6 +180,24 @@ body::before {
   transition: var(--transition);
   font-size: 0.9rem;
   font-weight: 500;
+  position: relative;
+}
+
+.nav-badge {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.9);
+  margin-left: auto;
+  animation: badge-pulse 1.8s infinite;
+}
+
+@keyframes badge-pulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { transform: scale(1.2); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
 .sidebar-nav a i {
@@ -433,6 +451,58 @@ body::before {
 }
 
 .view-all:hover { color: var(--gold-light); }
+
+/* ====== Filter Dropdowns & Controls ====== */
+.filter-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-options select,
+select.filter-select,
+.card-header select {
+  background-color: var(--dark-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 10px 38px 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 13px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.filter-options select:hover,
+select.filter-select:hover,
+.card-header select:hover {
+  border-color: var(--gold);
+  background-color: var(--dark-1);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.15);
+}
+
+.filter-options select:focus,
+select.filter-select:focus,
+.card-header select:focus {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.filter-options select option,
+.card-header select option {
+  background-color: var(--dark-2);
+  color: var(--text-primary);
+  padding: 12px;
+}
 
 .card-body { padding: 32px; }
 

@@ -62,6 +62,19 @@ if (process.env.DATABASE_URL || process.env.MYSQL_URL) {
 const db = mysql.createPool(poolConfig);
 console.log('Artist Dashboard connected to MySQL pool');
 
+// Safe database migrations for profile, messaging, and sold flags
+const safeMigrations = [
+  "ALTER TABLE clients ADD COLUMN profile_pic text DEFAULT NULL",
+  "ALTER TABLE clients ADD COLUMN bio text DEFAULT NULL",
+  "ALTER TABLE artists ADD COLUMN profile_pic text DEFAULT NULL",
+  "ALTER TABLE artists ADD COLUMN bio text DEFAULT NULL",
+  "ALTER TABLE paintings ADD COLUMN is_sold tinyint(1) DEFAULT 0",
+  "ALTER TABLE messages ADD COLUMN sender_type enum('client','artist') DEFAULT 'client'"
+];
+safeMigrations.forEach(sql => {
+  db.query(sql, () => {});
+});
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -418,7 +431,7 @@ app.get('/api/messages', isAuthenticated, (req, res) => {
     FROM messages m
     JOIN clients c ON m.client_id = c.client_id
     WHERE m.artist_id = ?
-    ORDER BY m.sent_at DESC
+    ORDER BY m.sent_at ASC
   `;
   db.query(query, [artistId], (err, results) => {
     if (err) return res.status(500).json({ error: 'Failed to fetch messages' });
@@ -428,7 +441,12 @@ app.get('/api/messages', isAuthenticated, (req, res) => {
       if (!messagesByClient[message.client_id]) {
         messagesByClient[message.client_id] = { client_id: message.client_id, client_name: message.client_name, messages: [] };
       }
-      messagesByClient[message.client_id].messages.push({ message_id: message.message_id, message: message.message, sent_at: message.sent_at });
+      messagesByClient[message.client_id].messages.push({ 
+        message_id: message.message_id, 
+        message: message.message, 
+        sent_at: message.sent_at,
+        sender_type: message.sender_type || (message.message.startsWith('[Artist]') ? 'artist' : 'client')
+      });
     });
     res.status(200).json(Object.values(messagesByClient));
   });
@@ -438,9 +456,63 @@ app.post('/api/messages', isAuthenticated, (req, res) => {
   const artistId = req.session.artistId;
   const { client_id, message } = req.body;
   
-  db.query('INSERT INTO messages (artist_id, client_id, message) VALUES (?, ?, ?)', [artistId, client_id, message], (err, result) => {
-    if (err) return res.status(500).json({ error: 'Failed to send message' });
-    res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
+  db.query(
+    'INSERT INTO messages (artist_id, client_id, message, sender_type) VALUES (?, ?, ?, ?)',
+    [artistId, client_id, message, 'artist'],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: 'Failed to send message' });
+      res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
+    }
+  );
+});
+
+// Profile Routes
+app.get('/profile', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'views', 'dashboard', 'profile.html')));
+
+app.get('/api/profile', isAuthenticated, (req, res) => {
+  const artistId = req.session.artistId;
+  db.query(
+    'SELECT artist_id, name, age, gender, phone, email, bio, profile_pic FROM artists WHERE artist_id = ?',
+    [artistId],
+    (err, results) => {
+      if (err || results.length === 0) return res.status(500).json({ error: 'Failed to fetch profile' });
+      res.status(200).json(results[0]);
+    }
+  );
+});
+
+app.put('/api/profile', isAuthenticated, (req, res) => {
+  const artistId = req.session.artistId;
+  const { name, age, gender, phone, bio } = req.body;
+  db.query(
+    'UPDATE artists SET name = ?, age = ?, gender = ?, phone = ?, bio = ? WHERE artist_id = ?',
+    [name, age, gender, phone, bio || null, artistId],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Failed to update profile' });
+      req.session.artistName = name;
+      res.status(200).json({ message: 'Profile updated successfully' });
+    }
+  );
+});
+
+app.post('/api/profile/picture', isAuthenticated, upload.single('profile_picture'), (req, res) => {
+  const artistId = req.session.artistId;
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+  const profile_pic = `/uploads/${req.file.filename}`;
+  
+  // Mirror to client-dashboard
+  const clientUploadDir = path.join(__dirname, '..', 'client-dashboard', 'public', 'uploads');
+  if (fs.existsSync(clientUploadDir)) {
+    try {
+      fs.copyFileSync(req.file.path, path.join(clientUploadDir, req.file.filename));
+    } catch (e) {
+      console.warn('Could not mirror profile picture to client:', e.message);
+    }
+  }
+
+  db.query('UPDATE artists SET profile_pic = ? WHERE artist_id = ?', [profile_pic, artistId], (err) => {
+    if (err) return res.status(500).json({ error: 'Failed to save profile picture' });
+    res.status(200).json({ message: 'Profile picture updated', profile_pic });
   });
 });
 

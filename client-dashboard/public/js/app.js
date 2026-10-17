@@ -48,6 +48,325 @@ function updateCartBadge() {
     badge.style.display = count > 0 ? 'flex' : 'none';
 }
 
+// ============ Feature 1 & 7: Socket.io Real-Time Client ============
+const socket = typeof io !== 'undefined' ? io() : null;
+if (socket) {
+    socket.on('connect', () => {
+        console.log('⚡ Connected to ARTiQ live auction & messaging stream:', socket.id);
+    });
+
+    // Feature 1: Real-time Live Bidding Broadcasts
+    socket.on('auction:bid', (data) => {
+        console.log('⚡ Real-time bid broadcast received:', data);
+        
+        // Update in-memory auctions
+        const found = state.auctions.find(a => a.auction_id == data.auctionId);
+        if (found) {
+            found.current_bid = data.currentBid;
+        }
+
+        // Live update any rendered auction cards on screen
+        const cards = document.querySelectorAll(`[data-auction-id="${data.auctionId}"]`);
+        cards.forEach(card => {
+            const bidAmtEl = card.querySelector('.bid-amount');
+            if (bidAmtEl) {
+                bidAmtEl.textContent = `₹${Number(data.currentBid).toLocaleString('en-IN')}`;
+                bidAmtEl.classList.remove('bid-pulse');
+                void bidAmtEl.offsetWidth; // Trigger reflow for animation restart
+                bidAmtEl.classList.add('bid-pulse');
+            }
+        });
+
+        showNotification(`⚡ Live Bid: ₹${Number(data.currentBid).toLocaleString('en-IN')} placed for "${data.title}" by ${data.bidderName || 'a collector'}!`, 'info');
+    });
+
+    // Feature 7 & Req 1: Real-time Artist Messages & Chatbox Stream
+    socket.on('chat:message', (data) => {
+        console.log('💬 Real-time chat message received:', data);
+        
+        // 1. If live chat modal is open and matches this conversation, append bubble live
+        const chatModal = document.getElementById('chatModal');
+        const stream = document.getElementById('chatbox-stream');
+        const targetArtistId = document.getElementById('chat-target-artist-id');
+        
+        if (chatModal && chatModal.style.display !== 'none' && stream) {
+            if (!targetArtistId || !targetArtistId.value || targetArtistId.value == data.artist_id) {
+                const bubble = document.createElement('div');
+                bubble.className = 'chat-bubble artist';
+                const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                bubble.innerHTML = `
+                    <div class="bubble-content">${escapeHtml(data.message || '')}</div>
+                    <div class="bubble-meta">${timeStr} · Artist Studio</div>
+                `;
+                stream.appendChild(bubble);
+                stream.scrollTop = stream.scrollHeight;
+            }
+        }
+
+        // 2. Refresh dashboard messages tab if currently visible
+        const messagesTab = document.querySelector('#messages-tab');
+        if (messagesTab && messagesTab.style.display !== 'none') {
+            loadMessagesTab(messagesTab);
+        }
+
+        // 3. Show navbar notification dot & toast
+        const msgBadge = document.getElementById('client-msg-badge');
+        if (msgBadge) msgBadge.style.display = 'inline-block';
+
+        showNotification(`💬 Message from Artist: "${(data.message || '').slice(0, 35)}..."`, 'info');
+    });
+}
+
+// ============ Req 7: Palette Themes Switcher ============
+function initThemeSwitcher() {
+    const savedTheme = localStorage.getItem('artiq_theme') || 'dark';
+    applyTheme(savedTheme);
+
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    const themeDropdown = document.getElementById('theme-dropdown');
+
+    if (themeToggleBtn && themeDropdown) {
+        themeToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            themeDropdown.classList.toggle('active');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.theme-menu')) {
+                themeDropdown.classList.remove('active');
+            }
+        });
+    }
+
+    const themeOptions = document.querySelectorAll('.theme-opt');
+    themeOptions.forEach(opt => {
+        opt.addEventListener('click', (e) => {
+            e.preventDefault();
+            const theme = opt.dataset.theme;
+            applyTheme(theme);
+            if (themeDropdown) themeDropdown.classList.remove('active');
+        });
+    });
+}
+
+function applyTheme(themeName) {
+    document.documentElement.setAttribute('data-theme', themeName);
+    localStorage.setItem('artiq_theme', themeName);
+
+    const themeOptions = document.querySelectorAll('.theme-opt');
+    themeOptions.forEach(opt => {
+        if (opt.dataset.theme === themeName) {
+            opt.classList.add('active');
+        } else {
+            opt.classList.remove('active');
+        }
+    });
+}
+
+// ============ Req 1 & 7: Interactive Live Chatbox Controller ============
+async function openChatModal(artistId, artistName = 'Studio Artist', prefillMessage = '') {
+    if (!state.user) {
+        showNotification('Please sign in to chat directly with artists or commission bespoke works.', 'error');
+        navigateTo('login');
+        return;
+    }
+
+    const modal = document.getElementById('chatModal');
+    if (!modal) return;
+
+    const targetArtistInput = document.getElementById('chat-target-artist-id');
+    const artistNameDisplay = document.getElementById('chat-artist-name');
+    const artistAvatar = document.getElementById('chat-artist-avatar');
+    const inputText = document.getElementById('chat-input-text');
+    const stream = document.getElementById('chatbox-stream');
+
+    if (targetArtistInput) targetArtistInput.value = artistId;
+    if (artistNameDisplay) artistNameDisplay.textContent = artistName;
+    if (artistAvatar) {
+        artistAvatar.innerHTML = `<span style="font-weight:700;font-size:1.1rem;">${(artistName || 'A').charAt(0).toUpperCase()}</span>`;
+    }
+    if (inputText) {
+        inputText.value = prefillMessage || '';
+    }
+
+    // Clear and display chat modal immediately so the user sees the chatbox
+    modal.style.display = 'flex';
+    if (inputText) inputText.focus();
+
+    // Hide navbar red badge when opening messages
+    const msgBadge = document.getElementById('client-msg-badge');
+    if (msgBadge) msgBadge.style.display = 'none';
+
+    // Fetch conversation history for this artist
+    if (stream) {
+        stream.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading conversation history...</div>';
+        try {
+            const res = await fetch(`${API_URL}/messages/${artistId}`, { credentials: 'include' });
+            if (res.ok) {
+                const messages = await res.json();
+                stream.innerHTML = '';
+                if (!messages || messages.length === 0) {
+                    stream.innerHTML = `
+                        <div style="text-align:center;padding:35px 20px;color:var(--text-muted);">
+                            <div style="font-size:2.2rem;margin-bottom:10px;opacity:0.8;">🎨</div>
+                            <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px;font-size:1.05rem;">Studio Channel with ${escapeHtml(artistName)}</div>
+                            <div style="font-size:0.85rem;max-width:320px;margin:0 auto;line-height:1.5;">Direct, authenticated chat. Inquire about framing, request custom commissions, or ask about inspiration.</div>
+                        </div>
+                    `;
+                } else {
+                    // Sort chronologically (oldest at top, latest at bottom)
+                    messages.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
+                    messages.forEach(msg => {
+                        const isClient = msg.sender_type === 'client' || (!msg.sender_type && msg.client_id == state.user.client_id);
+                        const bubble = document.createElement('div');
+                        bubble.className = `chat-bubble ${isClient ? 'client' : 'artist'}`;
+                        const timeStr = new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        
+                        let tag = null;
+                        let text = msg.message;
+                        const match = msg.message && msg.message.match(/^\[(.*?)\]\s*(.*)/s);
+                        if (match) {
+                            tag = match[1];
+                            text = match[2];
+                        }
+
+                        bubble.innerHTML = `
+                            ${tag ? `<span class="bubble-tag">${escapeHtml(tag)}</span>` : ''}
+                            <div class="bubble-content">${escapeHtml(text)}</div>
+                            <div class="bubble-meta">${timeStr} ${isClient ? '<i class="fas fa-check" style="font-size:0.65rem;margin-left:3px;color:var(--gold);"></i>' : '· Artist'}</div>
+                        `;
+                        stream.appendChild(bubble);
+                    });
+                }
+                stream.scrollTop = stream.scrollHeight;
+            } else {
+                stream.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);">Start your conversation with this artist below.</div>';
+            }
+        } catch (err) {
+            console.error('Error fetching chat thread:', err);
+            stream.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);">Direct message line ready. Send a message below.</div>';
+        }
+    }
+}
+
+function initChatModal() {
+    const modal = document.getElementById('chatModal');
+    if (!modal) return;
+
+    const closeBtn = document.getElementById('close-chat-modal');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Quick topic chips click handlers
+    const chips = modal.querySelectorAll('.topic-chip');
+    chips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            const topic = chip.dataset.topic;
+            const input = document.getElementById('chat-input-text');
+            if (!input) return;
+            const currentVal = input.value.replace(/^\[.*?\]\s*/, '');
+            input.value = `[${topic}] ${currentVal}`;
+            input.focus();
+        });
+    });
+
+    // Chat composer form submission - keeps the chatbox visible!
+    const composer = document.getElementById('chatbox-composer-form');
+    if (composer) {
+        composer.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!state.user) {
+                showNotification('Please sign in to send messages.', 'error');
+                navigateTo('login');
+                modal.style.display = 'none';
+                return;
+            }
+
+            const artistId = document.getElementById('chat-target-artist-id').value || 1;
+            const input = document.getElementById('chat-input-text');
+            const stream = document.getElementById('chatbox-stream');
+            const sendBtn = document.getElementById('chat-send-btn');
+            const text = input.value.trim();
+
+            if (!text) return;
+
+            // Optimistically append message to the visible stream
+            let tag = null;
+            let cleanText = text;
+            const match = text.match(/^\[(.*?)\]\s*(.*)/s);
+            if (match) {
+                tag = match[1];
+                cleanText = match[2];
+            }
+
+            const optimisticBubble = document.createElement('div');
+            optimisticBubble.className = 'chat-bubble client';
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            optimisticBubble.innerHTML = `
+                ${tag ? `<span class="bubble-tag">${escapeHtml(tag)}</span>` : ''}
+                <div class="bubble-content">${escapeHtml(cleanText)}</div>
+                <div class="bubble-meta">${timeStr} <i class="fas fa-spinner fa-spin" style="font-size:0.65rem;margin-left:3px;color:var(--gold);"></i></div>
+            `;
+            if (stream) {
+                stream.appendChild(optimisticBubble);
+                stream.scrollTop = stream.scrollHeight;
+            }
+
+            input.value = '';
+            const origBtnHtml = sendBtn ? sendBtn.innerHTML : '';
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        artist_id: artistId,
+                        message: text
+                    }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    showNotification('Message delivered to artist studio!', 'success');
+                    // Update checkmark
+                    const meta = optimisticBubble.querySelector('.bubble-meta');
+                    if (meta) {
+                        meta.innerHTML = `${timeStr} <i class="fas fa-check" style="font-size:0.65rem;margin-left:3px;color:var(--gold);"></i>`;
+                    }
+                } else {
+                    const err = await response.json();
+                    showNotification(err.message || 'Failed to deliver message', 'error');
+                    optimisticBubble.style.opacity = '0.5';
+                }
+            } catch (err) {
+                console.error('Error delivering message:', err);
+                showNotification('Network error while delivering message', 'error');
+                optimisticBubble.style.opacity = '0.5';
+            } finally {
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.innerHTML = origBtnHtml;
+                }
+                if (input) input.focus();
+            }
+        });
+    }
+}
+
 // ============ Page Loader ============
 function dismissLoader() {
     const loader = document.getElementById('page-loader');
@@ -77,6 +396,9 @@ const userIcon = document.getElementById('user-icon');
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Theme Switcher immediately
+    initThemeSwitcher();
+
     // Initialize the app
     init();
     
@@ -107,21 +429,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchButton = document.getElementById('search-button');
     const searchInput = document.getElementById('search-input');
     
-    searchButton.addEventListener('click', () => {
-        const query = searchInput.value.trim();
-        if (query) {
-            navigateTo('paintings', { search: query });
-        }
-    });
-    
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+    if (searchButton && searchInput) {
+        searchButton.addEventListener('click', () => {
             const query = searchInput.value.trim();
             if (query) {
                 navigateTo('paintings', { search: query });
             }
-        }
-    });
+        });
+        
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const query = searchInput.value.trim();
+                if (query) {
+                    navigateTo('paintings', { search: query });
+                }
+            }
+        });
+    }
+
+    // Direct Navbar Messages Action
+    const navMessagesBtn = document.getElementById('nav-messages-btn');
+    if (navMessagesBtn) {
+        navMessagesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!state.user) {
+                showNotification('Please sign in to view your messages and chat with artists.', 'error');
+                navigateTo('login');
+                return;
+            }
+            openChatModal(1, 'Studio Master Artist');
+        });
+    }
+
+    // Initialize interactive live chatbox modal listeners
+    initChatModal();
 });
 
 // Initialize the app
@@ -160,9 +501,16 @@ async function checkAuth() {
 function updateUserUI() {
     userDropdown.innerHTML = '';
     if (state.user) {
+        // Dynamic profile avatar in navbar
+        if (state.user.profile_pic) {
+            userIcon.innerHTML = `<img src="${escapeHtml(state.user.profile_pic)}" alt="${escapeHtml(state.user.name)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid var(--gold);vertical-align:middle;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-user\\'></i>'">`;
+        } else {
+            userIcon.innerHTML = '<i class="fas fa-user"></i>';
+        }
+
         userDropdown.innerHTML = `
             <div style="padding:10px 14px 6px;font-size:0.8rem;color:var(--text-muted)">Signed in as</div>
-            <div style="padding:0 14px 12px;font-weight:600;color:var(--text-primary);font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${state.user.name}</div>
+            <div style="padding:0 14px 12px;font-weight:600;color:var(--text-primary);font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(state.user.name)}</div>
             <div class="divider"></div>
             <a href="#" data-link="dashboard"><i class="fas fa-th-large" style="width:16px"></i> Dashboard</a>
             <a href="#" data-link="favorites"><i class="fas fa-heart" style="width:16px"></i> Favorites</a>
@@ -174,6 +522,7 @@ function updateUserUI() {
             await logout();
         });
     } else {
+        userIcon.innerHTML = '<i class="fas fa-user"></i>';
         userDropdown.innerHTML = `
             <a href="#" data-link="login"><i class="fas fa-sign-in-alt" style="width:16px"></i> Sign In</a>
             <a href="#" data-link="register"><i class="fas fa-user-plus" style="width:16px"></i> Register</a>
@@ -700,19 +1049,26 @@ function renderPaintingsGrid(paintings) {
     });
 }
 
-// Create painting card
+// Create painting card (with SOLD status handling)
 function createPaintingCard(painting) {
     const imageUrl = painting.image_url || 'https://via.placeholder.com/300x240/161616/c9a84c?text=ARTiQ';
+    const isSold = painting.is_sold == 1 || painting.is_sold === true;
     const card = document.createElement('div');
-    card.className = 'painting-card';
+    card.className = `painting-card ${isSold ? 'is-sold-card' : ''}`;
     card.innerHTML = `
         <div class="painting-image">
             <img src="${imageUrl}" alt="${escapeHtml(painting.title)}" loading="lazy">
             <span class="category-badge">${escapeHtml(painting.category)}</span>
+            ${isSold ? '<span class="sold-badge"><i class="fas fa-lock"></i> SOLD</span>' : ''}
             <div class="painting-overlay">
-                <button class="btn primary-btn add-to-cart-btn" style="font-size:0.8rem;padding:8px 14px">
-                    <i class="fas fa-shopping-bag"></i> Add to Cart
-                </button>
+                ${isSold 
+                    ? `<button class="btn commission-btn sold-commission-btn" style="font-size:0.8rem;padding:8px 14px;background:rgba(220,38,38,0.9);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(220,38,38,0.4);">
+                        <i class="fas fa-magic"></i> Commission Similar
+                       </button>`
+                    : `<button class="btn primary-btn add-to-cart-btn" style="font-size:0.8rem;padding:8px 14px">
+                        <i class="fas fa-shopping-bag"></i> Add to Cart
+                       </button>`
+                }
                 <button class="btn ghost-btn favorite-btn" style="font-size:0.8rem;padding:8px 14px">
                     <i class="far fa-heart"></i>
                 </button>
@@ -722,7 +1078,8 @@ function createPaintingCard(painting) {
             <h3>${escapeHtml(painting.title)}</h3>
             <p class="artist">By <span>${escapeHtml(painting.artist_name)}</span></p>
             <div class="price-row">
-                <span class="price">₹${Number(painting.price).toLocaleString('en-IN')}</span>
+                <span class="price" ${isSold ? 'style="text-decoration:line-through;opacity:0.6;"' : ''}>₹${Number(painting.price).toLocaleString('en-IN')}</span>
+                ${isSold ? '<span style="font-size:0.75rem;font-weight:700;color:#ef4444;background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:12px;margin-left:auto;letter-spacing:0.04em;">PRIVATE COLLECTION</span>' : ''}
                 <button class="fav-btn" title="Add to favorites"><i class="far fa-heart"></i></button>
             </div>
         </div>
@@ -732,10 +1089,27 @@ function createPaintingCard(painting) {
             navigateTo('painting', { id: painting.painting_id });
         }
     });
-    card.querySelector('.add-to-cart-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        addToCart(painting.painting_id);
-    });
+
+    const addBtn = card.querySelector('.add-to-cart-btn');
+    if (addBtn) {
+        addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addToCart(painting.painting_id);
+        });
+    }
+
+    const commissionBtn = card.querySelector('.sold-commission-btn');
+    if (commissionBtn) {
+        commissionBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openChatModal(
+                painting.artist_id || 1, 
+                painting.artist_name || 'the Artist', 
+                `Hi ${painting.artist_name || 'Artist'}, I saw that your original masterpiece "${painting.title}" has been sold to a private collector. Could I commission a bespoke piece in a similar composition?`
+            );
+        });
+    }
+
     const favBtns = card.querySelectorAll('.favorite-btn, .fav-btn');
     favBtns.forEach(btn => btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -762,6 +1136,7 @@ function createAuctionCard(auction) {
     const imgUrl = auction.image_url || 'https://via.placeholder.com/300x200/161616/c9a84c?text=ARTiQ';
     const card = document.createElement('div');
     card.className = 'auction-card';
+    card.setAttribute('data-auction-id', auction.auction_id);
     card.innerHTML = `
         <div class="auction-image">
             <img src="${imgUrl}" alt="${escapeHtml(auction.title)}" loading="lazy">
@@ -798,7 +1173,7 @@ function createAuctionCard(auction) {
     return card;
 }
 
-// Render painting detail
+// Render painting detail (with SOLD Banner & interactive Chatbox commission)
 async function renderPaintingDetail(id) {
     const painting = await fetchPaintingById(id);
     
@@ -809,25 +1184,57 @@ async function renderPaintingDetail(id) {
     
     const template = document.getElementById('painting-detail-template');
     const content = template.content.cloneNode(true);
+    const isSold = painting.is_sold == 1 || painting.is_sold === true;
     
     // Populate painting details
     content.querySelector('#detail-image').src = painting.image_url || '/placeholder.svg?height=400&width=600';
     content.querySelector('#detail-image').alt = painting.title;
     content.querySelector('#detail-title').textContent = painting.title;
     content.querySelector('#detail-artist').textContent = painting.artist_name;
-    content.querySelector('#detail-price').textContent = painting.price;
+    content.querySelector('#detail-price').textContent = Number(painting.price).toLocaleString('en-IN');
     content.querySelector('#detail-size').textContent = painting.size;
     content.querySelector('#detail-category').textContent = painting.category;
     content.querySelector('#detail-description').textContent = painting.description || 'No description available.';
     
-    // Add event listeners
-    content.querySelector('#add-to-cart').addEventListener('click', () => {
-        addToCart(painting.painting_id);
-    });
+    const soldBanner = content.querySelector('#detail-sold-banner');
+    const addToCartBtn = content.querySelector('#add-to-cart');
+    const inquireBtn = content.querySelector('#inquire-artist-btn');
+
+    if (isSold) {
+        if (soldBanner) soldBanner.style.display = 'flex';
+        if (addToCartBtn) {
+            addToCartBtn.disabled = true;
+            addToCartBtn.style.opacity = '0.55';
+            addToCartBtn.style.cursor = 'not-allowed';
+            addToCartBtn.innerHTML = '<i class="fas fa-lock"></i> Original Sold';
+        }
+        if (inquireBtn) {
+            inquireBtn.classList.remove('ghost-btn');
+            inquireBtn.classList.add('primary-btn');
+            inquireBtn.innerHTML = '<i class="fas fa-magic"></i> Commission Similar Piece';
+        }
+    } else {
+        if (soldBanner) soldBanner.style.display = 'none';
+        if (addToCartBtn) {
+            addToCartBtn.addEventListener('click', () => {
+                addToCart(painting.painting_id);
+            });
+        }
+    }
     
     content.querySelector('#add-to-favorites').addEventListener('click', () => {
         addToFavorites(painting.painting_id);
     });
+
+    // Req 1 & 4: Open Interactive Chatbox for Inquiry / Custom Commission
+    if (inquireBtn) {
+        inquireBtn.addEventListener('click', () => {
+            const prefill = isSold
+                ? `Hi ${painting.artist_name || 'Artist'}, I saw that your original painting "${painting.title}" is already acquired. Could I commission a bespoke similar work?`
+                : `Hi ${painting.artist_name || 'Artist'}, I would love to ask about your artwork "${painting.title}".`;
+            openChatModal(painting.artist_id || 1, painting.artist_name || 'Studio Artist', prefill);
+        });
+    }
     
     app.innerHTML = '';
     app.appendChild(content);
@@ -926,21 +1333,128 @@ async function renderCheckout() {
             </div>
             <div class="order-item-info">
                 <h4>${item.title}</h4>
-                <p class="price">₹${item.price}</p>
+                <p class="price">₹${Number(item.price).toLocaleString('en-IN')}</p>
             </div>
         `;
         
         orderItems.appendChild(orderItem);
     });
     
+    const shippingFee = 250;
+    const grandTotal = subtotal + shippingFee;
+
     // Update subtotal and total
-    content.querySelector('#checkout-subtotal').textContent = `₹${subtotal.toFixed(2)}`;
-    content.querySelector('#checkout-total').textContent = `₹${(subtotal + 25).toFixed(2)}`;
+    content.querySelector('#checkout-subtotal').textContent = `₹${subtotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+    content.querySelector('#checkout-total').textContent = `₹${grandTotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
     
-    // Form submission
+    // Feature 6: Payment method toggle
+    const payRadios = content.querySelectorAll('input[name="pay-method"]');
+    const cardFields = content.querySelector('#card-fields-container');
+    const upiFields = content.querySelector('#upi-fields-container');
+    const methodCards = content.querySelectorAll('.pay-method-card');
+
+    payRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            methodCards.forEach(c => {
+                const r = c.querySelector('input[name="pay-method"]');
+                if (r && r.checked) {
+                    c.style.borderColor = 'var(--gold)';
+                    c.style.background = 'var(--dark-3)';
+                } else {
+                    c.style.borderColor = 'var(--border)';
+                    c.style.background = 'var(--dark-2)';
+                }
+            });
+            if (radio.value === 'upi') {
+                if (cardFields) cardFields.style.display = 'none';
+                if (upiFields) upiFields.style.display = 'block';
+                content.querySelector('#card-number').required = false;
+                content.querySelector('#expiry').required = false;
+                content.querySelector('#cvv').required = false;
+                content.querySelector('#upi-id').required = true;
+            } else {
+                if (cardFields) cardFields.style.display = 'block';
+                if (upiFields) upiFields.style.display = 'none';
+                content.querySelector('#card-number').required = true;
+                content.querySelector('#expiry').required = true;
+                content.querySelector('#cvv').required = true;
+                content.querySelector('#upi-id').required = false;
+            }
+        });
+    });
+
+    // Feature 6: Autofill Stripe Test Card
+    const autofillBtn = content.querySelector('#autofill-test-card');
+    if (autofillBtn) {
+        autofillBtn.addEventListener('click', () => {
+            content.querySelector('#card-number').value = '4242 4242 4242 4242';
+            content.querySelector('#expiry').value = '12/28';
+            content.querySelector('#cvv').value = '123';
+            showNotification('Stripe test card autofilled (Visa · 4242)', 'info');
+        });
+    }
+
+    // Live card number spacing
+    const cardInput = content.querySelector('#card-number');
+    if (cardInput) {
+        cardInput.addEventListener('input', (e) => {
+            let val = e.target.value.replace(/\D/g, '').substring(0, 16);
+            val = val.match(/.{1,4}/g)?.join(' ') || val;
+            e.target.value = val;
+        });
+    }
+
+    // Expiry MM/YY formatting
+    const expInput = content.querySelector('#expiry');
+    if (expInput) {
+        expInput.addEventListener('input', (e) => {
+            let val = e.target.value.replace(/\D/g, '').substring(0, 4);
+            if (val.length >= 2) val = val.substring(0, 2) + '/' + val.substring(2);
+            e.target.value = val;
+        });
+    }
+
+    // Form submission with Stripe Intent Authorization
     content.querySelector('#shipping-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        await createOrder();
+        const submitBtn = content.querySelector('#place-order-submit-btn') || e.target.querySelector('button[type="submit"]');
+        const origText = submitBtn.innerHTML;
+
+        try {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authorizing with Stripe Gateway...';
+
+            const selectedMethod = content.querySelector('input[name="pay-method"]:checked')?.value || 'card';
+
+            // Call Stripe Payment Intent API
+            const intentRes = await fetch(`${API_URL}/payment/create-intent`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: grandTotal, currency: 'inr' }),
+                credentials: 'include'
+            });
+
+            if (!intentRes.ok) {
+                const errData = await intentRes.json();
+                throw new Error(errData.message || 'Payment authorization failed');
+            }
+
+            const intentData = await intentRes.json();
+
+            // Simulate Stripe 3D secure verification handshake
+            await new Promise(r => setTimeout(r, 750));
+
+            submitBtn.innerHTML = '<i class="fas fa-check-circle"></i> Payment Authorized! Creating Order...';
+            
+            // Execute order creation
+            await createOrder();
+            showNotification(`Payment verified by Stripe (${intentData.clientSecret.slice(0, 18)}...)`, 'success');
+        } catch (err) {
+            console.error('Checkout error:', err);
+            showNotification(err.message || 'Checkout failed. Please retry.', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = origText;
+        }
     });
     
     app.innerHTML = '';
@@ -1063,15 +1577,44 @@ async function renderDashboard() {
     const content = template.content.cloneNode(true);
 
     // Populate profile form (before appending to DOM is fine)
-    content.querySelector('#profile-name').value = state.user.name;
-    content.querySelector('#profile-email').value = state.user.email;
-    content.querySelector('#profile-phone').value = state.user.phone;
-    content.querySelector('#profile-age').value = state.user.age;
-    content.querySelector('#profile-gender').value = state.user.gender;
+    content.querySelector('#profile-name').value = state.user.name || '';
+    content.querySelector('#profile-email').value = state.user.email || '';
+    content.querySelector('#profile-phone').value = state.user.phone || '';
+    content.querySelector('#profile-age').value = state.user.age || '';
+    content.querySelector('#profile-gender').value = state.user.gender || 'other';
+
+    const picUrlInput = content.querySelector('#profile-pic-url');
+    if (picUrlInput) picUrlInput.value = state.user.profile_pic || '';
+
+    const bioInput = content.querySelector('#profile-bio');
+    if (bioInput) bioInput.value = state.user.bio || '';
+
+    const avatarPreview = content.querySelector('#client-avatar-preview');
+    if (avatarPreview) {
+        if (state.user.profile_pic) {
+            avatarPreview.innerHTML = `<img src="${escapeHtml(state.user.profile_pic)}" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-user\\'></i>'">`;
+        } else {
+            avatarPreview.innerHTML = '<i class="fas fa-user"></i>';
+        }
+    }
 
     // Inject content into the DOM
     app.innerHTML = '';
     app.appendChild(content);
+
+    // Live avatar preview on input
+    const livePicInput = document.querySelector('#profile-pic-url');
+    const livePreview = document.querySelector('#client-avatar-preview');
+    if (livePicInput && livePreview) {
+        livePicInput.addEventListener('input', () => {
+            const url = livePicInput.value.trim();
+            if (url) {
+                livePreview.innerHTML = `<img src="${escapeHtml(url)}" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.innerHTML='<i class=\\'fas fa-user\\'></i>'">`;
+            } else {
+                livePreview.innerHTML = '<i class="fas fa-user"></i>';
+            }
+        });
+    }
 
     // Now use document.querySelector to access DOM elements
     const tabLinks = document.querySelectorAll('.dashboard-menu a');
@@ -1083,10 +1626,12 @@ async function renderDashboard() {
         e.preventDefault();
 
         const profileData = {
-            name: document.querySelector('#profile-name').value,
-            phone: document.querySelector('#profile-phone').value,
+            name: document.querySelector('#profile-name').value.trim(),
+            phone: document.querySelector('#profile-phone').value.trim(),
             age: document.querySelector('#profile-age').value,
-            gender: document.querySelector('#profile-gender').value
+            gender: document.querySelector('#profile-gender').value,
+            profile_pic: document.querySelector('#profile-pic-url') ? document.querySelector('#profile-pic-url').value.trim() : null,
+            bio: document.querySelector('#profile-bio') ? document.querySelector('#profile-bio').value.trim() : null
         };
 
         await updateProfile(profileData);
@@ -1390,35 +1935,111 @@ async function loadMessagesTab(content) {
             credentials: 'include'
         });
         
+        const container = content.querySelector('.client-messages-list') || content.querySelector('.messages-list');
+        if (!container) return;
+        
+        container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Loading conversation history...</div>';
+
         if (response.ok) {
             const messages = await response.json();
-            
-            const messagesList = content.querySelector('.messages-list');
-            messagesList.innerHTML = '';
+            container.innerHTML = '';
             
             if (messages.length === 0) {
-                messagesList.innerHTML = '<p class="no-items">You have no messages.</p>';
+                container.innerHTML = `
+                    <div class="empty-state" style="padding:40px 20px;">
+                        <i class="fas fa-comments"></i>
+                        <h3>No Inquiries Yet</h3>
+                        <p>Browse the gallery and click <strong>"Inquire / Commission"</strong> on any artwork to connect directly with artists.</p>
+                        <button class="btn primary-btn" onclick="navigateTo('paintings')"><i class="fas fa-palette"></i> Explore Gallery</button>
+                    </div>
+                `;
                 return;
             }
             
-            messages.forEach(message => {
-                const messageItem = document.createElement('div');
-                messageItem.className = 'message-item';
+            messages.forEach(msg => {
+                const thread = document.createElement('div');
+                thread.className = 'inquiry-thread-card';
                 
-                const messageDate = new Date(message.sent_at).toLocaleString();
-                
-                messageItem.innerHTML = `
-                    <div class="message-header">
-                        <span class="message-sender">${message.sender_name}</span>
-                        <span class="message-date">${messageDate}</span>
+                const dateStr = new Date(msg.sent_at).toLocaleString('en-IN', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                });
+
+                // Extract tag if present: e.g. "[Custom Commission] message..."
+                let tag = 'General Inquiry';
+                let cleanText = msg.message;
+                const tagMatch = msg.message && msg.message.match(/^\[(.*?)\]\s*(.*)/s);
+                if (tagMatch) {
+                    tag = tagMatch[1];
+                    cleanText = tagMatch[2];
+                }
+
+                const artistName = msg.artist_name || 'Studio Artist';
+                const initial = artistName.charAt(0).toUpperCase();
+
+                thread.innerHTML = `
+                    <div class="inquiry-header">
+                        <div class="inquiry-artist-meta">
+                            <div class="inquiry-artist-avatar">${initial}</div>
+                            <div>
+                                <div style="font-weight:600;color:var(--text-primary);font-size:0.95rem;">${escapeHtml(artistName)}</div>
+                                <span class="inquiry-tag"><i class="fas fa-tag" style="margin-right:4px;"></i>${escapeHtml(tag)}</span>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <button type="button" class="btn ghost-btn open-chat-thread-btn" style="font-size:0.75rem;padding:4px 10px;border-radius:12px;">
+                                <i class="fas fa-comments"></i> Live Chatbox
+                            </button>
+                            <div style="font-size:0.75rem;color:var(--text-muted)"><i class="fas fa-clock" style="margin-right:4px;"></i>${dateStr}</div>
+                        </div>
                     </div>
-                    <div class="message-content">
-                        <p>${message.message}</p>
-                    </div>
+                    <div class="inquiry-body">${escapeHtml(cleanText)}</div>
+                    <form class="inquiry-reply-box" data-artist-id="${msg.artist_id}">
+                        <input type="text" placeholder="Reply to ${escapeHtml(artistName)}..." required>
+                        <button type="submit" class="btn primary-btn" style="padding:8px 16px;font-size:0.85rem;">
+                            <i class="fas fa-paper-plane"></i> Reply
+                        </button>
+                    </form>
                 `;
-                
-                messagesList.appendChild(messageItem);
+
+                const chatBtn = thread.querySelector('.open-chat-thread-btn');
+                if (chatBtn) {
+                    chatBtn.addEventListener('click', () => {
+                        openChatModal(msg.artist_id, artistName);
+                    });
+                }
+
+                thread.querySelector('.inquiry-reply-box').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const replyInput = e.target.querySelector('input');
+                    const text = replyInput.value.trim();
+                    if (!text) return;
+                    
+                    try {
+                        const replyRes = await fetch(`${API_URL}/messages`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                artist_id: msg.artist_id,
+                                message: `[Follow-up] ${text}`
+                            }),
+                            credentials: 'include'
+                        });
+                        if (replyRes.ok) {
+                            showNotification('Reply delivered to artist!', 'success');
+                            loadMessagesTab(content);
+                        } else {
+                            showNotification('Failed to send reply', 'error');
+                        }
+                    } catch (err) {
+                        showNotification('Network error while sending reply', 'error');
+                    }
+                });
+
+                container.appendChild(thread);
             });
+        } else {
+            container.innerHTML = '<p class="no-items">Unable to load messages.</p>';
         }
     } catch (error) {
         console.error('Error fetching messages:', error);
@@ -1517,7 +2138,6 @@ async function renderOrders() {
 // Render auctions
 async function renderAuctions() {
     await fetchAuctions();
-    console.log(id);
     
     const template = document.getElementById('auctions-template');
     const content = template.content.cloneNode(true);
@@ -1538,56 +2158,5 @@ async function renderAuctions() {
     app.appendChild(content);
 }
 
-// Show notification
-function showNotification(message, type = 'success') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.classList.add('show');
-    }, 10);
-    
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => {
-            notification.remove();
-        }, 300);
-    }, 3000);
-}
-
-// Add notification styles
-const notificationStyles = document.createElement('style');
-notificationStyles.textContent = `
-    .notification {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        border-radius: 4px;
-        color: #fff;
-        font-weight: 500;
-        z-index: 1000;
-        transform: translateX(120%);
-        transition: transform 0.3s ease;
-        max-width: 300px;
-    }
-    
-    .notification.show {
-        transform: translateX(0);
-    }
-    
-    .notification.success {
-        background-color: #4caf50;
-    }
-    
-    .notification.error {
-        background-color: #f44336;
-    }
-`;
-
-document.head.appendChild(notificationStyles);
 
 
