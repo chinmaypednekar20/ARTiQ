@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ARTiQ — A premier marketplace for fine art. Discover, collect, and bid on exceptional paintings from renowned artists worldwide.">
+    <title>ARTiQ — Fine Art Marketplace</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+    <!-- Page Loader -->
+    <div id="page-loader">
+        <div class="loader-logo">ARTiQ</div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <div class="logo">
+                <a href="#" data-link="home">ARTiQ</a>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="Search paintings, artists...">
+                <button id="search-button" aria-label="Search"><i class="fas fa-search"></i></button>
+            </div>
+            <nav>
+                <ul>
+                    <li>
+                        <a href="#" data-link="cart" id="cart-nav-link" aria-label="Cart">
+                            <i class="fas fa-shopping-bag"></i>
+                            <span class="nav-badge" id="cart-badge" style="display:none">0</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-link="favorites" aria-label="Favorites">
+                            <i class="fas fa-heart"></i>
+                        </a>
+                    </li>
+                    <li class="user-menu">
+                        <a href="#" id="user-icon" aria-label="Account" aria-haspopup="true">
+                            <i class="fas fa-user"></i>
+                        </a>
+                        <div class="dropdown-menu" id="user-dropdown">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main id="app">
+        <!-- Content dynamically loaded -->
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">ARTiQ</div>
+                    <p>A premier marketplace connecting extraordinary artists with passionate collectors worldwide.</p>
+                    <div class="social-icons" style="margin-top:20px">
+                        <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                        <a href="#" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+                        <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                        <a href="#" aria-label="Pinterest"><i class="fab fa-pinterest-p"></i></a>
+                    </div>
+                </div>
+                <div class="footer-section">
+                    <h3>Explore</h3>
+                    <ul>
+                        <li><a href="#" data-link="home">Home</a></li>
+                        <li><a href="#" data-link="paintings">Browse Art</a></li>
+                        <li><a href="#" data-link="auctions">Live Auctions</a></li>
+                        <li><a href="#" data-link="favorites">My Favorites</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Account</h3>
+                    <ul>
+                        <li><a href="#" data-link="dashboard">My Dashboard</a></li>
+                        <li><a href="#" data-link="cart">My Cart</a></li>
+                        <li><a href="#" data-link="login">Sign In</a></li>
+                        <li><a href="#" data-link="register">Register</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Support</h3>
+                    <ul>
+                        <li><a href="#">Help Center</a></li>
+                        <li><a href="#">Shipping Policy</a></li>
+                        <li><a href="#">Returns</a></li>
+                        <li><a href="#">Contact Us</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 ARTiQ. All rights reserved. Crafted with passion for art.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ====== TEMPLATES ====== -->
+
+    <!-- Home Template -->
+    <template id="home-template">
+        <section class="hero">
+            <div class="container">
+                <div class="hero-content">
+                    <div class="hero-eyebrow">
+                        <i class="fas fa-gem"></i> Premier Art Marketplace
+                    </div>
+                    <h1>Discover <em>Exceptional</em><br>Art for Your World</h1>
+                    <p>Curated paintings from celebrated artists, delivered to collectors who appreciate true craftsmanship and beauty.</p>
+                    <div class="hero-actions">
+                        <button class="btn primary-btn" data-link="paintings">
+                            <i class="fas fa-palette"></i> Browse Collection
+                        </button>
+                        <button class="btn secondary-btn" data-link="auctions">
+                            <i class="fas fa-gavel"></i> Live Auctions
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <span class="num">500+</span>
+                    <span class="label">Artworks</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="num">120+</span>
+                    <span class="label">Artists</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="num">98%</span>
+                    <span class="label">Satisfied</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="categories pb">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-eyebrow">Browse by Style</span>
+                    <h2>Art Categories</h2>
+                    <p>Explore our curated collection across every artistic tradition</p>
+                </div>
+                <div class="category-list">
+                    <!-- Categories dynamically loaded -->
+                </div>
+            </div>
+        </section>
+
+        <section class="featured-paintings fade-in">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-eyebrow">Handpicked for You</span>
+                    <h2>Featured Paintings</h2>
+                    <p>Discover masterworks from our most celebrated artists</p>
+                </div>
+                <div class="paintings-grid">
+                    <!-- Paintings dynamically loaded -->
+                </div>
+            </div>
+        </section>
+
+        <section class="active-auctions fade-in">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-eyebrow">Bid Now</span>
+                    <h2>Live Auctions</h2>
+                    <p>Don't miss your chance to own these exceptional pieces</p>
+                </div>
+                <div class="auctions-grid">
+                    <!-- Auctions dynamically loaded -->
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Paintings Template -->
+    <template id="paintings-template">
+        <section class="paintings-page">
+            <div class="container">
+                <div class="paintings-header">
+                    <h2>Art Collection</h2>
+                    <div class="filters">
+                        <div class="filter-group">
+                            <label for="category-filter"><i class="fas fa-tag"></i> Category</label>
+                            <select id="category-filter">
+                                <option value="">All Categories</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="price-min"><i class="fas fa-rupee-sign"></i> Min Price</label>
+                            <input type="number" id="price-min" placeholder="0">
+                        </div>
+                        <div class="filter-group">
+                            <label for="price-max"><i class="fas fa-rupee-sign"></i> Max Price</label>
+                            <input type="number" id="price-max" placeholder="Any">
+                        </div>
+                        <div class="filter-group">
+                            <label for="sort-filter"><i class="fas fa-sort"></i> Sort By</label>
+                            <select id="sort-filter">
+                                <option value="">Featured</option>
+                                <option value="price-asc">Price: Low to High</option>
+                                <option value="price-desc">Price: High to Low</option>
+                                <option value="newest">Newest First</option>
+                            </select>
+                        </div>
+                        <button id="apply-filters" class="btn primary-btn">Apply</button>
+                    </div>
+                </div>
+                <div class="paintings-grid">
+                    <!-- Paintings dynamically loaded -->
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Painting Detail Template -->
+    <template id="painting-detail-template">
+        <section class="painting-detail">
+            <div class="container">
+                <div class="painting-detail-content">
+                    <div class="painting-image">
+                        <img src="/placeholder.svg" alt="" id="detail-image">
+                    </div>
+                    <div class="detail-info-box">
+                        <h2 id="detail-title"></h2>
+                        <p class="artist">By <span id="detail-artist"></span></p>
+                        <div class="detail-price">₹<span id="detail-price"></span></div>
+                        <div class="detail-meta">
+                            <span class="meta-tag">Category: <span id="detail-category"></span></span>
+                            <span class="meta-tag">Size: <span id="detail-size">Original</span></span>
+                        </div>
+                        <div class="detail-divider"></div>
+                        <div class="detail-description">
+                            <h3>About this piece</h3>
+                            <p id="detail-description"></p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="btn primary-btn" id="add-to-cart">
+                                <i class="fas fa-shopping-bag"></i> Add to Cart
+                            </button>
+                            <button class="btn secondary-btn" id="add-to-favorites">
+                                <i class="far fa-heart"></i> Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Cart Template -->
+    <template id="cart-template">
+        <section class="cart-page">
+            <div class="container">
+                <h2><i class="fas fa-shopping-bag" style="color:var(--gold);margin-right:12px;"></i>Your Cart</h2>
+                <div class="cart-content">
+                    <div class="cart-items">
+                        <!-- Cart items dynamically loaded -->
+                    </div>
+                    <div class="cart-summary">
+                        <h3>Order Summary</h3>
+                        <div class="summary-item">
+                            <span>Subtotal</span>
+                            <span id="cart-subtotal">₹0.00</span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Shipping</span>
+                            <span>₹250.00</span>
+                        </div>
+                        <div class="summary-item total">
+                            <span>Total</span>
+                            <span id="cart-total">₹0.00</span>
+                        </div>
+                        <button class="btn primary-btn" id="checkout-btn">
+                            <i class="fas fa-lock"></i> Proceed to Checkout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Checkout Template -->
+    <template id="checkout-template">
+        <section class="checkout-page">
+            <div class="container">
+                <h2><i class="fas fa-lock" style="color:var(--gold);margin-right:12px;"></i>Checkout</h2>
+                <div class="checkout-content">
+                    <div class="checkout-form">
+                        <h3>Shipping Information</h3>
+                        <form id="shipping-form">
+                            <div class="form-group">
+                                <label for="full-name">Full Name</label>
+                                <input type="text" id="full-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="address">Address</label>
+                                <input type="text" id="address" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="city">City</label>
+                                    <input type="text" id="city" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="state">State</label>
+                                    <input type="text" id="state" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="zip">PIN Code</label>
+                                    <input type="text" id="zip" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="country">Country</label>
+                                    <input type="text" id="country" value="India">
+                                </div>
+                            </div>
+                            <h3>Payment Information</h3>
+                            <div class="form-group">
+                                <label for="card-number">Card Number</label>
+                                <input type="text" id="card-number" placeholder="1234 5678 9012 3456" maxlength="19" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="expiry">Expiry Date</label>
+                                    <input type="text" id="expiry" placeholder="MM/YY" maxlength="5" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cvv">CVV</label>
+                                    <input type="text" id="cvv" placeholder="•••" maxlength="4" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn primary-btn">
+                                <i class="fas fa-check-circle"></i> Place Order
+                            </button>
+                        </form>
+                    </div>
+                    <div class="order-summary">
+                        <h3>Order Summary</h3>
+                        <div class="order-items">
+                            <!-- Order items dynamically loaded -->
+                        </div>
+                        <div class="summary-item">
+                            <span>Subtotal</span>
+                            <span id="checkout-subtotal">₹0.00</span>
+                        </div>
+                        <div class="summary-item">
+                            <span>Shipping</span>
+                            <span>₹250.00</span>
+                        </div>
+                        <div class="summary-item total">
+                            <span>Total</span>
+                            <span id="checkout-total">₹0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Login Template -->
+    <template id="login-template">
+        <section class="auth-page">
+            <div class="container">
+                <div class="auth-form-container">
+                    <div class="auth-logo">
+                        <div class="logo-text">ARTiQ</div>
+                        <p>Sign in to your collector account</p>
+                    </div>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label for="login-email">Email Address</label>
+                            <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Password</label>
+                            <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+                        </div>
+                        <button type="submit" class="btn primary-btn">
+                            <i class="fas fa-sign-in-alt"></i> Sign In
+                        </button>
+                    </form>
+                    <p class="auth-switch">New to ARTiQ? <a href="#" data-link="register">Create Account</a></p>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Register Template -->
+    <template id="register-template">
+        <section class="auth-page">
+            <div class="container">
+                <div class="auth-form-container">
+                    <div class="auth-logo">
+                        <div class="logo-text">ARTiQ</div>
+                        <p>Join the world's finest art marketplace</p>
+                    </div>
+                    <form id="register-form">
+                        <div class="form-group">
+                            <label for="register-name">Full Name</label>
+                            <input type="text" id="register-name" placeholder="Your Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="register-email">Email Address</label>
+                            <input type="email" id="register-email" placeholder="you@example.com" required autocomplete="email">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="register-password">Password</label>
+                                <input type="password" id="register-password" placeholder="Min 8 chars" required autocomplete="new-password">
+                            </div>
+                            <div class="form-group">
+                                <label for="register-confirm-password">Confirm</label>
+                                <input type="password" id="register-confirm-password" placeholder="Re-enter" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="register-phone">Phone Number</label>
+                            <input type="tel" id="register-phone" placeholder="10-digit number" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="register-age">Age</label>
+                                <input type="number" id="register-age" placeholder="Age" min="18" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="register-gender">Gender</label>
+                                <select id="register-gender" required>
+                                    <option value="">Select</option>
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn primary-btn">
+                            <i class="fas fa-user-plus"></i> Create Account
+                        </button>
+                    </form>
+                    <p class="auth-switch">Already have an account? <a href="#" data-link="login">Sign In</a></p>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Dashboard Template -->
+    <template id="dashboard-template">
+        <section class="dashboard-page">
+            <div class="container">
+                <h2><i class="fas fa-th-large" style="color:var(--gold);margin-right:12px;font-size:1.4rem;"></i>My Dashboard</h2>
+                <div class="dashboard-content">
+                    <div class="dashboard-sidebar">
+                        <ul class="dashboard-menu">
+                            <li><a href="#" class="active" data-tab="profile"><i class="fas fa-user"></i> Profile</a></li>
+                            <li><a href="#" data-tab="orders"><i class="fas fa-box"></i> My Orders</a></li>
+                            <li><a href="#" data-tab="favorites"><i class="fas fa-heart"></i> Favorites</a></li>
+                            <li><a href="#" data-tab="auctions"><i class="fas fa-gavel"></i> Auction Activity</a></li>
+                        </ul>
+                    </div>
+                    <div class="dashboard-main">
+                        <div class="dashboard-tab" id="profile-tab">
+                            <h3>My Profile</h3>
+                            <form id="profile-form" style="max-width:500px">
+                                <div class="form-group">
+                                    <label for="profile-name">Full Name</label>
+                                    <input type="text" id="profile-name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-email">Email</label>
+                                    <input type="email" id="profile-email" readonly style="opacity:0.5;cursor:not-allowed">
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-phone">Phone</label>
+                                    <input type="tel" id="profile-phone" required>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="profile-age">Age</label>
+                                        <input type="number" id="profile-age" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="profile-gender">Gender</label>
+                                        <select id="profile-gender" required>
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                            <option value="other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn primary-btn">
+                                    <i class="fas fa-save"></i> Update Profile
+                                </button>
+                            </form>
+                        </div>
+                        <div class="dashboard-tab" id="orders-tab" style="display:none">
+                            <h3>My Orders</h3>
+                            <div class="orders-list"></div>
+                        </div>
+                        <div class="dashboard-tab" id="favorites-tab" style="display:none">
+                            <h3>My Favorites</h3>
+                            <div class="favorites-grid"></div>
+                        </div>
+                        <div class="dashboard-tab" id="auctions-tab" style="display:none">
+                            <h3>My Auction Activity</h3>
+                            <div class="auctions-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="receiptModal" class="receipt-modal" style="display:none">
+                    <div class="receipt-content">
+                        <button class="close-receipt">&times;</button>
+                        <div id="receiptContainer"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Favorites Template -->
+    <template id="favorites-template">
+        <section class="favorites-page">
+            <div class="container">
+                <h2><i class="fas fa-heart" style="color:var(--gold);margin-right:12px;"></i>My Favorites</h2>
+                <div class="favorites-grid"></div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Auctions Template -->
+    <template id="auctions-template">
+        <section class="auctions-page">
+            <div class="container">
+                <div class="section-header" style="padding-top:0;text-align:left;margin-bottom:36px;">
+                    <span class="section-eyebrow">Bid Now</span>
+                    <h2 style="text-align:left">Live Auctions</h2>
+                </div>
+                <div class="auctions-grid"></div>
+            </div>
+        </section>
+    </template>
+
+    <script src="js/app.js" defer></script>
+</body>
+</html>

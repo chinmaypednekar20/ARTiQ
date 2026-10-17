@@ -1,0 +1,103 @@
+services:
+  # ============================================================================
+  # MySQL Database Service
+  # Automatically initializes schema & seed data from artiqpc.sql on first boot
+  # ============================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: artiq-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-artiq_root_secure_2026}
+      MYSQL_DATABASE: artiqpc
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./artiqpc.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - artiq-network
+
+  # ============================================================================
+  # Artist Dashboard Service (Port 3000)
+  # Catalog management, auction setup, order fulfillment & file uploads
+  # ============================================================================
+  artist-dashboard:
+    build:
+      context: ./artist-dashboard
+      dockerfile: Dockerfile
+    container_name: artiq-artist-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-artiq_root_secure_2026}
+      DB_NAME: artiqpc
+      SESSION_SECRET: ${SESSION_SECRET:-artiq_artist_s3ss10n_s3cr3t_k3y_2026_ultra_secure}
+      CORS_ORIGIN: http://localhost:3001
+      UPLOADS_DIR: /app/public/uploads
+    volumes:
+      # Shared persistent volume for uploaded paintings
+      - uploads_data:/app/public/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - artiq-network
+
+  # ============================================================================
+  # Client Dashboard Storefront (Port 3001)
+  # Buyer SPA, live bidding engine, shopping cart, checkout & autonomous images
+  # ============================================================================
+  client-dashboard:
+    build:
+      context: ./client-dashboard
+      dockerfile: Dockerfile
+    container_name: artiq-client-dashboard
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-artiq_root_secure_2026}
+      DB_NAME: artiqpc
+      JWT_SECRET: ${JWT_SECRET:-artiq_jwt_s3cr3t_k3y_2026_super_secure_token}
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3001
+      ARTIST_SERVER_URL: http://localhost:3000
+      UPLOADS_DIR: /app/public/uploads
+    volumes:
+      # Mounts the exact same upload volume so client serves images autonomously
+      - uploads_data:/app/public/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - artiq-network
+
+# ==============================================================================
+# Persistent Named Volumes & Network
+# ==============================================================================
+volumes:
+  mysql_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  artiq-network:
+    driver: bridge
