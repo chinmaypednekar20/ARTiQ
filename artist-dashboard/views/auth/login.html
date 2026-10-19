@@ -3,32 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artist Login | ARTiQ</title>
+    <title>Artist Studio Login | ARTiQ</title>
     <link rel="stylesheet" href="/css/auth.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
                 <h1>ARTiQ</h1>
-                <p>Artist Dashboard Login</p>
+                <p>Artist Studio Portal</p>
             </div>
+
+            <!-- OAuth Google Sign-In -->
+            <button type="button" id="googleLoginBtn" class="btn-google" style="width:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 20px;border-radius:var(--radius-md);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#fff;font-weight:600;font-size:0.92rem;cursor:pointer;margin-bottom:24px;transition:var(--transition);">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                </svg>
+                Continue with Google
+            </button>
+
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;color:var(--text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;">
+                <span style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></span>
+                <span>or email</span>
+                <span style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></span>
+            </div>
+
             <form id="loginForm">
                 <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" required>
+                    <label for="email">Studio Email</label>
+                    <input type="email" id="email" name="email" required placeholder="artist@example.com">
                 </div>
                 <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <label for="password">Password</label>
+                        <a href="#" id="forgotPasswordLink" style="font-size:0.8rem;color:var(--gold);text-decoration:none;">Forgot password?</a>
+                    </div>
+                    <input type="password" id="password" name="password" required placeholder="••••••••">
                 </div>
                 <div class="form-group">
-                    <button type="submit" class="btn-primary">Login</button>
+                    <button type="submit" class="btn-primary" style="width:100%;">Sign In</button>
                 </div>
                 <div id="errorMessage" class="error-message"></div>
             </form>
             <div class="auth-footer">
-                <p>Don't have an account? <a href="/register.html">Register</a></p>
+                <p>New artist? <a href="/register.html">Apply for Studio Access</a></p>
+            </div>
+        </div>
+
+        <!-- Forgot Password Modal -->
+        <div id="forgotModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px);">
+            <div style="background:var(--dark-2);border:1px solid var(--border);border-radius:var(--radius-lg);max-width:440px;width:100%;padding:36px;box-shadow:var(--shadow-lg);position:relative;">
+                <button type="button" id="closeForgotModal" style="position:absolute;top:16px;right:18px;background:none;border:none;color:var(--text-muted);font-size:1.5rem;cursor:pointer;">&times;</button>
+                <div style="font-family:'Playfair Display',serif;font-size:1.4rem;color:#fff;margin-bottom:8px;">Reset Studio Password</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px;">Enter your registered studio email to receive an instant verification code.</p>
+
+                <!-- Step 1: Request Code -->
+                <form id="forgotRequestForm">
+                    <div class="form-group" style="margin-bottom:16px;">
+                        <label for="forgotEmail" style="display:block;font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;">Studio Email</label>
+                        <input type="email" id="forgotEmail" required style="width:100%;padding:11px 14px;background:var(--dark-3);border:1px solid var(--border);border-radius:var(--radius-md);color:#fff;" placeholder="artist@example.com">
+                    </div>
+                    <button type="submit" class="btn-primary" id="sendCodeBtn" style="width:100%;padding:11px;">Send Verification Code</button>
+                </form>
+
+                <!-- Step 2: Reset Form -->
+                <form id="forgotResetForm" style="display:none;margin-top:16px;">
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label for="resetTokenInput" style="display:block;font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;">6-Digit Verification Code</label>
+                        <input type="text" id="resetTokenInput" required maxlength="6" style="width:100%;padding:11px 14px;background:var(--dark-3);border:1px solid var(--border);border-radius:var(--radius-md);color:#fff;letter-spacing:4px;font-weight:700;text-align:center;">
+                    </div>
+                    <div class="form-group" style="margin-bottom:18px;">
+                        <label for="resetNewPass" style="display:block;font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;">New Password</label>
+                        <input type="password" id="resetNewPass" required minlength="6" style="width:100%;padding:11px 14px;background:var(--dark-3);border:1px solid var(--border);border-radius:var(--radius-md);color:#fff;" placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn-primary" id="confirmResetBtn" style="width:100%;padding:11px;">Update Password</button>
+                </form>
+
+                <div id="forgotStatusMsg" style="margin-top:14px;font-size:0.85rem;text-align:center;"></div>
             </div>
         </div>
     </div>

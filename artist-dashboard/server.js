@@ -62,14 +62,26 @@ if (process.env.DATABASE_URL || process.env.MYSQL_URL) {
 const db = mysql.createPool(poolConfig);
 console.log('Artist Dashboard connected to MySQL pool');
 
-// Safe database migrations for profile, messaging, and sold flags
+// Safe database migrations for profile, messaging, sold flags, read receipts, and oauth
 const safeMigrations = [
   "ALTER TABLE clients ADD COLUMN profile_pic text DEFAULT NULL",
   "ALTER TABLE clients ADD COLUMN bio text DEFAULT NULL",
+  "ALTER TABLE clients ADD COLUMN google_id varchar(255) DEFAULT NULL",
   "ALTER TABLE artists ADD COLUMN profile_pic text DEFAULT NULL",
   "ALTER TABLE artists ADD COLUMN bio text DEFAULT NULL",
+  "ALTER TABLE artists ADD COLUMN google_id varchar(255) DEFAULT NULL",
   "ALTER TABLE paintings ADD COLUMN is_sold tinyint(1) DEFAULT 0",
-  "ALTER TABLE messages ADD COLUMN sender_type enum('client','artist') DEFAULT 'client'"
+  "ALTER TABLE messages ADD COLUMN sender_type enum('client','artist') DEFAULT 'client'",
+  "ALTER TABLE messages ADD COLUMN is_read tinyint(1) DEFAULT 0",
+  `CREATE TABLE IF NOT EXISTS password_resets (
+    id int NOT NULL AUTO_INCREMENT,
+    email varchar(255) NOT NULL,
+    token varchar(255) NOT NULL,
+    expires_at timestamp NOT NULL,
+    created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_email (email)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;`
 ];
 safeMigrations.forEach(sql => {
   db.query(sql, () => {});
@@ -217,6 +229,107 @@ app.post('/api/login', authLimiter, async (req, res) => {
 app.get('/api/logout', (req, res) => {
   req.session.destroy();
   res.status(200).json({ message: 'Logged out successfully' });
+});
+
+// ============ OAuth: Google Sign-in for Artists ============
+app.post('/api/auth/google', async (req, res) => {
+  const { email, name, picture, google_id } = req.body;
+  if (!email) return res.status(400).json({ error: 'Google email is required' });
+
+  db.query('SELECT artist_id, name, email, profile_pic FROM artists WHERE email = ?', [email], async (err, results) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+
+    if (results.length > 0) {
+      const artist = results[0];
+      if (picture && !artist.profile_pic) {
+        db.query('UPDATE artists SET profile_pic = ?, google_id = COALESCE(google_id, ?) WHERE artist_id = ?', [picture, google_id || 'google_auth', artist.artist_id]);
+      }
+      req.session.artistId = artist.artist_id;
+      req.session.artistName = artist.name;
+      return res.status(200).json({ 
+        message: 'Google login successful', 
+        artist: { id: artist.artist_id, name: artist.name, email: artist.email } 
+      });
+    }
+
+    // Auto-register artist with Google profile
+    try {
+      const randomPass = crypto.randomBytes(16).toString('hex');
+      const password_hash = await bcrypt.hash(randomPass, 12);
+      const artistName = name || email.split('@')[0];
+      db.query(
+        'INSERT INTO artists (name, email, password_hash, age, gender, phone, profile_pic, google_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [artistName, email, password_hash, 25, 'other', '0000000000', picture || null, google_id || 'google_auth'],
+        (insertErr, insertResult) => {
+          if (insertErr) {
+            console.error('Google register error:', insertErr);
+            return res.status(500).json({ error: 'Failed to create artist with Google' });
+          }
+          req.session.artistId = insertResult.insertId;
+          req.session.artistName = artistName;
+          res.status(201).json({ 
+            message: 'Google artist registration successful', 
+            artist: { id: insertResult.insertId, name: artistName, email } 
+          });
+        }
+      );
+    } catch (e) {
+      res.status(500).json({ error: 'OAuth processing failed' });
+    }
+  });
+});
+
+// ============ Forgot & Reset Password for Artists ============
+app.post('/api/forgot-password', (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email address required' });
+
+  db.query('SELECT artist_id, name FROM artists WHERE email = ?', [email], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Server error' });
+    if (results.length === 0) return res.status(404).json({ error: 'No artist account found with this email' });
+
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    db.query(
+      'INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)',
+      [email, resetToken, expiresAt],
+      (insertErr) => {
+        if (insertErr) return res.status(500).json({ error: 'Failed to generate reset code' });
+        res.status(200).json({
+          message: 'Reset verification code generated and sent to email.',
+          resetCode: resetToken
+        });
+      }
+    );
+  });
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  const { email, token, newPassword } = req.body;
+  if (!email || !token || !newPassword) {
+    return res.status(400).json({ error: 'Email, reset code, and new password are required' });
+  }
+
+  db.query(
+    'SELECT id FROM password_resets WHERE email = ? AND token = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+    [email, token],
+    async (err, results) => {
+      if (err) return res.status(500).json({ error: 'Server error' });
+      if (results.length === 0) return res.status(400).json({ error: 'Invalid or expired verification code' });
+
+      try {
+        const password_hash = await bcrypt.hash(newPassword, 12);
+        db.query('UPDATE artists SET password_hash = ? WHERE email = ?', [password_hash, email], (updateErr) => {
+          if (updateErr) return res.status(500).json({ error: 'Failed to update password' });
+          db.query('DELETE FROM password_resets WHERE email = ?', [email]);
+          res.status(200).json({ message: 'Studio password reset successfully. Please sign in.' });
+        });
+      } catch (e) {
+        res.status(500).json({ error: 'Encryption error' });
+      }
+    }
+  );
 });
 
 // Dashboard data
@@ -445,10 +558,24 @@ app.get('/api/messages', isAuthenticated, (req, res) => {
         message_id: message.message_id, 
         message: message.message, 
         sent_at: message.sent_at,
+        is_read: message.is_read || 0,
         sender_type: message.sender_type || (message.message.startsWith('[Artist]') ? 'artist' : 'client')
       });
     });
     res.status(200).json(Object.values(messagesByClient));
+  });
+});
+
+app.post('/api/messages/mark-read', isAuthenticated, (req, res) => {
+  const artistId = req.session.artistId;
+  const { client_id } = req.body;
+  const sql = client_id 
+    ? 'UPDATE messages SET is_read = 1 WHERE artist_id = ? AND client_id = ? AND sender_type = "client"'
+    : 'UPDATE messages SET is_read = 1 WHERE artist_id = ? AND sender_type = "client"';
+  const params = client_id ? [artistId, client_id] : [artistId];
+  db.query(sql, params, (err) => {
+    if (err) return res.status(500).json({ error: 'Failed to mark messages as read' });
+    res.status(200).json({ message: 'Messages marked as read' });
   });
 });
 
@@ -457,7 +584,7 @@ app.post('/api/messages', isAuthenticated, (req, res) => {
   const { client_id, message } = req.body;
   
   db.query(
-    'INSERT INTO messages (artist_id, client_id, message, sender_type) VALUES (?, ?, ?, ?)',
+    'INSERT INTO messages (artist_id, client_id, message, sender_type, is_read) VALUES (?, ?, ?, ?, 0)',
     [artistId, client_id, message, 'artist'],
     (err, result) => {
       if (err) return res.status(500).json({ error: 'Failed to send message' });

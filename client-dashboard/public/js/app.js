@@ -198,6 +198,14 @@ async function openChatModal(artistId, artistName = 'Studio Artist', prefillMess
     const msgBadge = document.getElementById('client-msg-badge');
     if (msgBadge) msgBadge.style.display = 'none';
 
+    // Mark messages as read from this artist
+    fetch(`${API_URL}/messages/mark-read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ artist_id: artistId })
+    }).catch(err => console.debug('Mark read error:', err));
+
     // Fetch conversation history for this artist
     if (stream) {
         stream.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading conversation history...</div>';
@@ -398,6 +406,9 @@ const userIcon = document.getElementById('user-icon');
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize Theme Switcher immediately
     initThemeSwitcher();
+
+    // Initialize Forgot Password modal
+    initClientForgotPasswordModal();
 
     // Initialize the app
     init();
@@ -1477,9 +1488,6 @@ function renderLogin() {
         const email = document.querySelector('#login-email')?.value || '';
         const password = document.querySelector('#login-password')?.value || '';
         
-        console.log(email, password);
-        
-        
         try {
             const response = await fetch(`${API_URL}/login`, {
                 method: 'POST',
@@ -1497,7 +1505,7 @@ function renderLogin() {
                 localStorage.setItem('userEmail', data.user.email);
                 await checkAuth();
                 navigateTo('dashboard');
-                showNotification('Login successful!');
+                showNotification('Welcome back to ARTiQ!');
             } else {
                 const data = await response.json();
                 showNotification(data.message, 'error');
@@ -1507,9 +1515,165 @@ function renderLogin() {
             showNotification('Login failed', 'error');
         }
     });
+
+    // Google OAuth Handler
+    const googleBtn = content.querySelector('#client-google-btn');
+    if (googleBtn) {
+        googleBtn.addEventListener('click', async () => {
+            const googleEmail = prompt('Sign in with Google Account:\nEnter Google Email:', 'collector@gmail.com');
+            if (!googleEmail) return;
+            const googleName = prompt('Enter Google Display Name:', 'Contemporary Collector') || 'Collector';
+
+            googleBtn.disabled = true;
+            googleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authenticating...';
+
+            try {
+                const res = await fetch(`${API_URL}/auth/google`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        email: googleEmail,
+                        name: googleName,
+                        google_id: 'goog_' + Date.now()
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.user) {
+                    localStorage.setItem('userId', data.user.id);
+                    localStorage.setItem('userName', data.user.name);
+                    localStorage.setItem('userEmail', data.user.email);
+                    await checkAuth();
+                    navigateTo('dashboard');
+                    showNotification('Signed in with Google successfully!');
+                } else {
+                    showNotification(data.message || 'Google sign-in failed', 'error');
+                    googleBtn.disabled = false;
+                    googleBtn.innerHTML = 'Continue with Google';
+                }
+            } catch (err) {
+                console.error('Google sign-in error:', err);
+                showNotification('Google authentication failed', 'error');
+                googleBtn.disabled = false;
+                googleBtn.innerHTML = 'Continue with Google';
+            }
+        });
+    }
+
+    // Forgot Password Link Handler
+    const forgotLink = content.querySelector('#client-forgot-link');
+    if (forgotLink) {
+        forgotLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('clientForgotModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                const status = document.getElementById('clientForgotStatusMsg');
+                if (status) status.textContent = '';
+            }
+        });
+    }
     
     app.innerHTML = '';
     app.appendChild(content);
+}
+
+// Client Forgot Password Modal Logic
+function initClientForgotPasswordModal() {
+    const modal = document.getElementById('clientForgotModal');
+    const closeBtn = document.getElementById('closeClientForgotModal');
+    const reqForm = document.getElementById('clientForgotRequestForm');
+    const resetForm = document.getElementById('clientForgotResetForm');
+    const statusMsg = document.getElementById('clientForgotStatusMsg');
+
+    if (!modal) return;
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+
+    if (reqForm) {
+        reqForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('clientForgotEmail').value.trim();
+            const sendBtn = document.getElementById('clientSendCodeBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Generating verification code...';
+
+            try {
+                const res = await fetch(`${API_URL}/auth/forgot-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Verification Code';
+
+                if (res.ok && data.resetCode) {
+                    statusMsg.style.color = 'var(--color-success)';
+                    statusMsg.innerHTML = `Verification code generated! (Dev code: <strong>${data.resetCode}</strong>)`;
+                    reqForm.style.display = 'none';
+                    resetForm.style.display = 'block';
+                    document.getElementById('clientResetTokenInput').value = data.resetCode;
+                } else {
+                    statusMsg.style.color = 'var(--color-error)';
+                    statusMsg.textContent = data.message || 'Failed to process request';
+                }
+            } catch (err) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Verification Code';
+                statusMsg.style.color = 'var(--color-error)';
+                statusMsg.textContent = 'Network error while requesting code.';
+            }
+        });
+    }
+
+    if (resetForm) {
+        resetForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('clientForgotEmail').value.trim();
+            const token = document.getElementById('clientResetTokenInput').value.trim();
+            const newPassword = document.getElementById('clientResetNewPass').value;
+            const confirmBtn = document.getElementById('clientConfirmResetBtn');
+
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Updating...';
+
+            try {
+                const res = await fetch(`${API_URL}/auth/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, token, newPassword })
+                });
+                const data = await res.json();
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Update Password';
+
+                if (res.ok) {
+                    statusMsg.style.color = 'var(--color-success)';
+                    statusMsg.textContent = data.message || 'Password updated successfully! You may now sign in.';
+                    setTimeout(() => {
+                        modal.style.display = 'none';
+                        resetForm.reset();
+                        reqForm.style.display = 'block';
+                        resetForm.style.display = 'none';
+                        statusMsg.textContent = '';
+                    }, 2000);
+                } else {
+                    statusMsg.style.color = 'var(--color-error)';
+                    statusMsg.textContent = data.message || 'Failed to update password';
+                }
+            } catch (err) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Update Password';
+                statusMsg.style.color = 'var(--color-error)';
+                statusMsg.textContent = 'Network error while resetting password.';
+            }
+        });
+    }
 }
 
 

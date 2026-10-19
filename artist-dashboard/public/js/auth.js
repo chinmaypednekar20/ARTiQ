@@ -99,4 +99,147 @@ document.addEventListener('DOMContentLoaded', function() {
         errorMessage.textContent = 'Registration successful! Please login.';
         errorMessage.style.color = '#28a745';
     }
+
+    // ============ Google OAuth Handler ============
+    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    if (googleLoginBtn) {
+        googleLoginBtn.addEventListener('click', function() {
+            // Simulated / Token-Ready Google OAuth popup flow
+            const emailPrompt = prompt('Enter your Google account email to sign in to ARTiQ Studio:', 'artist.studio@gmail.com');
+            if (!emailPrompt) return;
+            const googleName = emailPrompt.split('@')[0].replace(/[._]/g, ' ').toUpperCase();
+
+            googleLoginBtn.disabled = true;
+            googleLoginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authenticating with Google...';
+
+            fetch('/api/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: emailPrompt.trim(),
+                    name: googleName,
+                    google_id: 'goog_' + Date.now()
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.artist) {
+                    localStorage.setItem('artist', JSON.stringify(data.artist));
+                    window.location.href = '/dashboard';
+                } else {
+                    alert(data.error || 'Google authentication failed');
+                    googleLoginBtn.disabled = false;
+                    googleLoginBtn.innerHTML = 'Continue with Google';
+                }
+            })
+            .catch(err => {
+                console.error('Google auth error:', err);
+                alert('Network error connecting to Google Auth.');
+                googleLoginBtn.disabled = false;
+                googleLoginBtn.innerHTML = 'Continue with Google';
+            });
+        });
+    }
+
+    // ============ Forgot Password Flow ============
+    const forgotLink = document.getElementById('forgotPasswordLink');
+    const forgotModal = document.getElementById('forgotModal');
+    const closeForgot = document.getElementById('closeForgotModal');
+    const forgotReqForm = document.getElementById('forgotRequestForm');
+    const forgotResetForm = document.getElementById('forgotResetForm');
+    const forgotStatus = document.getElementById('forgotStatusMsg');
+
+    if (forgotLink && forgotModal) {
+        forgotLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            forgotModal.style.display = 'flex';
+            if (forgotStatus) forgotStatus.textContent = '';
+        });
+
+        if (closeForgot) {
+            closeForgot.addEventListener('click', () => {
+                forgotModal.style.display = 'none';
+            });
+        }
+
+        if (forgotReqForm) {
+            forgotReqForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const email = document.getElementById('forgotEmail').value.trim();
+                const sendBtn = document.getElementById('sendCodeBtn');
+                sendBtn.disabled = true;
+                sendBtn.textContent = 'Generating code...';
+
+                fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = 'Send Verification Code';
+                    if (data.resetCode) {
+                        forgotStatus.style.color = '#10b981';
+                        forgotStatus.innerHTML = `Verification code sent! (Dev verification code: <strong>${data.resetCode}</strong>)`;
+                        forgotReqForm.style.display = 'none';
+                        forgotResetForm.style.display = 'block';
+                        document.getElementById('resetTokenInput').value = data.resetCode;
+                    } else {
+                        forgotStatus.style.color = '#ef4444';
+                        forgotStatus.textContent = data.error || 'Failed to process request';
+                    }
+                })
+                .catch(err => {
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = 'Send Verification Code';
+                    forgotStatus.style.color = '#ef4444';
+                    forgotStatus.textContent = 'Network error while requesting reset.';
+                });
+            });
+        }
+
+        if (forgotResetForm) {
+            forgotResetForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const email = document.getElementById('forgotEmail').value.trim();
+                const token = document.getElementById('resetTokenInput').value.trim();
+                const newPassword = document.getElementById('resetNewPass').value;
+                const confirmBtn = document.getElementById('confirmResetBtn');
+
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = 'Updating...';
+
+                fetch('/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, token, newPassword })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Update Password';
+                    if (data.message && !data.error) {
+                        forgotStatus.style.color = '#10b981';
+                        forgotStatus.textContent = data.message;
+                        setTimeout(() => {
+                            forgotModal.style.display = 'none';
+                            forgotResetForm.reset();
+                            forgotReqForm.style.display = 'block';
+                            forgotResetForm.style.display = 'none';
+                        }, 1800);
+                    } else {
+                        forgotStatus.style.color = '#ef4444';
+                        forgotStatus.textContent = data.error || 'Reset failed';
+                    }
+                })
+                .catch(err => {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Update Password';
+                    forgotStatus.style.color = '#ef4444';
+                    forgotStatus.textContent = 'Network error resetting password.';
+                });
+            });
+        }
+    }
 });

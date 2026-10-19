@@ -213,6 +213,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => {
                     chatMessages.scrollTop = chatMessages.scrollHeight;
                 }, 50);
+
+                // Mark messages from this client as seen / read
+                fetch('/api/messages/mark-read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_id: clientId })
+                }).then(() => {
+                    // Update client.messages in-memory is_read flags
+                    if (client.messages) {
+                        client.messages.forEach(m => { m.is_read = 1; });
+                    }
+                    // Remove red dot notification badge immediately
+                    const badge = document.getElementById('messagesBadge');
+                    if (badge) badge.style.display = 'none';
+                }).catch(err => console.debug('Mark read error:', err));
             }
         }
     }

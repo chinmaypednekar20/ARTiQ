@@ -63,14 +63,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 const badge = document.getElementById('messagesBadge');
                 if (!badge) return;
                 
-                let totalMessages = 0;
+                let unreadCount = 0;
                 clientMessages.forEach(c => {
-                    totalMessages += (c.messages ? c.messages.length : 0);
+                    if (c.messages && Array.isArray(c.messages)) {
+                        c.messages.forEach(m => {
+                            if (m.sender_type === 'client' && (!m.is_read || m.is_read == 0)) {
+                                unreadCount++;
+                            }
+                        });
+                    }
                 });
 
-                if (totalMessages > 0) {
+                if (unreadCount > 0) {
                     badge.style.display = 'inline-block';
-                    badge.title = `${totalMessages} total message(s)`;
+                    badge.title = `${unreadCount} unread message(s)`;
                 } else {
                     badge.style.display = 'none';
                 }

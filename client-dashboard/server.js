@@ -347,17 +347,29 @@ async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
     `);
 
-    // Safe Column Migrations for Profiles, Sold Artworks, and Messaging
+    // Safe Column Migrations for Profiles, Sold Artworks, Messaging, and Auth
     const safeMigrations = [
       "ALTER TABLE clients ADD COLUMN profile_pic text DEFAULT NULL",
       "ALTER TABLE clients ADD COLUMN bio text DEFAULT NULL",
+      "ALTER TABLE clients ADD COLUMN google_id varchar(255) DEFAULT NULL",
       "ALTER TABLE artists ADD COLUMN profile_pic text DEFAULT NULL",
       "ALTER TABLE artists ADD COLUMN bio text DEFAULT NULL",
+      "ALTER TABLE artists ADD COLUMN google_id varchar(255) DEFAULT NULL",
       "ALTER TABLE paintings ADD COLUMN is_sold tinyint(1) DEFAULT 0",
-      "ALTER TABLE messages ADD COLUMN sender_type enum('client','artist') DEFAULT 'client'"
+      "ALTER TABLE messages ADD COLUMN sender_type enum('client','artist') DEFAULT 'client'",
+      "ALTER TABLE messages ADD COLUMN is_read tinyint(1) DEFAULT 0",
+      `CREATE TABLE IF NOT EXISTS password_resets (
+        id int NOT NULL AUTO_INCREMENT,
+        email varchar(255) NOT NULL,
+        token varchar(255) NOT NULL,
+        expires_at timestamp NOT NULL,
+        created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_email (email)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;`
     ];
     for (const sql of safeMigrations) {
-      try { await conn.execute(sql); } catch (e) { /* Column already exists */ }
+      try { await conn.execute(sql); } catch (e) { /* Column or table already exists */ }
     }
 
     // Auto-mark existing ordered paintings as sold
@@ -511,6 +523,111 @@ app.post('/api/logout', (req, res) => {
     secure: IS_PROD 
   });
   res.json({ message: 'Logged out successfully' });
+});
+
+// ============ OAuth: Google Sign-in for Collectors ============
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { email, name, picture, google_id } = req.body;
+    if (!email) return res.status(400).json({ message: 'Google email is required' });
+
+    const [existingUsers] = await db.execute('SELECT * FROM clients WHERE email = ?', [email]);
+    let user;
+
+    if (existingUsers.length > 0) {
+      user = existingUsers[0];
+      if (picture && !user.profile_pic) {
+        await db.execute('UPDATE clients SET profile_pic = ?, google_id = COALESCE(google_id, ?) WHERE client_id = ?', [picture, google_id || 'google_auth', user.client_id]);
+      }
+    } else {
+      // Auto-register collector account with Google credentials
+      const randomPass = crypto.randomBytes(16).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPass, 12);
+      const collectorName = name || email.split('@')[0];
+      const [result] = await db.execute(
+        'INSERT INTO clients (name, email, password_hash, phone, age, gender, profile_pic, google_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [collectorName, email, hashedPassword, '0000000000', 25, 'other', picture || null, google_id || 'google_auth']
+      );
+      user = { client_id: result.insertId, name: collectorName, email, profile_pic: picture || null };
+    }
+
+    const token = jwt.sign(
+      { id: user.client_id, email: user.email, name: user.name },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      sameSite: IS_PROD ? 'none' : 'lax', 
+      secure: IS_PROD,
+      maxAge: 24 * 60 * 60 * 1000 
+    });
+
+    res.json({ 
+      message: 'Google login successful', 
+      user: { id: user.client_id, name: user.name, email: user.email, profile_pic: user.profile_pic } 
+    });
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    res.status(500).json({ message: 'Google authentication failed' });
+  }
+});
+
+// ============ Forgot & Reset Password for Collectors ============
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email address is required' });
+
+    const [users] = await db.execute('SELECT client_id, name FROM clients WHERE email = ?', [email]);
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'No collector account found with this email' });
+    }
+
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit verification code
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min expiry
+
+    await db.execute(
+      'INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)',
+      [email, resetToken, expiresAt]
+    );
+
+    res.json({
+      message: 'Password reset verification code generated.',
+      resetCode: resetToken // Ready for self-service testing in browser
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Failed to process password reset request' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ message: 'Email, verification code, and new password required' });
+    }
+
+    const [resets] = await db.execute(
+      'SELECT id FROM password_resets WHERE email = ? AND token = ? AND expires_at > NOW() ORDER BY id DESC LIMIT 1',
+      [email, token]
+    );
+
+    if (resets.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await db.execute('UPDATE clients SET password_hash = ? WHERE email = ?', [hashedPassword, email]);
+    await db.execute('DELETE FROM password_resets WHERE email = ?', [email]);
+
+    res.json({ message: 'Password updated successfully! You may now sign in.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Failed to update password' });
+  }
 });
 
 // ============================================================================
@@ -1028,7 +1145,7 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
     }
 
     const [result] = await db.execute(
-      'INSERT INTO messages (artist_id, client_id, message, sender_type) VALUES (?, ?, ?, ?)',
+      'INSERT INTO messages (artist_id, client_id, message, sender_type, is_read) VALUES (?, ?, ?, ?, 0)',
       [artist_id, clientId, message.trim(), 'client']
     );
 
@@ -1050,6 +1167,23 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ message: 'Failed to transmit message' });
+  }
+});
+
+// Mark messages as read by collector
+app.post('/api/messages/mark-read', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.user.id;
+    const { artist_id } = req.body;
+    if (artist_id) {
+      await db.execute('UPDATE messages SET is_read = 1 WHERE client_id = ? AND artist_id = ? AND sender_type = "artist"', [clientId, artist_id]);
+    } else {
+      await db.execute('UPDATE messages SET is_read = 1 WHERE client_id = ? AND sender_type = "artist"', [clientId]);
+    }
+    res.json({ message: 'Messages marked as read' });
+  } catch (error) {
+    console.error('Error marking client messages read:', error);
+    res.status(500).json({ message: 'Failed to update read status' });
   }
 });
 
